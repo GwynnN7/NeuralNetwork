@@ -1,13 +1,13 @@
 #include "cli.hpp"
+
 #include "CLI/CLI.hpp"
 #include "types.hpp"
 
-Args parse_args(int argc, char *argv[]) {
+Args parse_args(int argc, char* argv[]) {
     Args args;
     CLI::App app{"Neural Network Training"};
 
-    std::map<std::string, DatasetType> dataset_map{
-        {"xor", DatasetType::XOR}, {"xor_hot", DatasetType::XOR_HOT}, {"mnist", DatasetType::MNIST}};
+    std::map<std::string, DatasetType> dataset_map{{"xor", DatasetType::XOR}, {"xor_hot", DatasetType::XOR_HOT}, {"mnist", DatasetType::MNIST}};
     app.add_option("dataset", args.dataset_type, "Dataset type")
         ->transform(CLI::CheckedTransformer(dataset_map, CLI::ignore_case))
         ->required();
@@ -24,7 +24,7 @@ Args parse_args(int argc, char *argv[]) {
 
     try {
         app.parse(argc, argv);
-    } catch (const CLI::ParseError &e) {
+    } catch (const CLI::ParseError& e) {
         std::cerr << "Error parsing arguments: " << e.what() << std::endl;
         throw std::invalid_argument("Invalid command line arguments.");
     }

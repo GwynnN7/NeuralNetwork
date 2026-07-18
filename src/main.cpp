@@ -17,8 +17,8 @@ class Layer {
 
   public:
     virtual ~Layer() = default;
-    virtual Matrix forward(const Matrix &input_matrix) = 0;
-    virtual Matrix backward(const Matrix &output_gradient, const Args &args) = 0;
+    virtual Matrix forward(const Matrix& input_matrix) = 0;
+    virtual Matrix backward(const Matrix& output_gradient, const Args& args) = 0;
     virtual Scalar weight_norm() const { return 0.0; }
 };
 
@@ -36,15 +36,16 @@ class DenseLayer : public Layer {
         delta_W = Matrix::Zero(output_size, input_size);
     }
 
-    Matrix forward(const Matrix &input_matrix) override {
+    Matrix forward(const Matrix& input_matrix) override {
         X = input_matrix;
         Y = (W * X).colwise() + b; // Multiply weights with input and add bias
         return Y;
     }
 
-    Matrix backward(const Matrix &output_gradient, const Args &args) override {
+    Matrix backward(const Matrix& output_gradient, const Args& args) override {
         Matrix weights_delta = (output_gradient * X.transpose()) / args.batch_size; // Average over batch size for gradient
-        Vector bias_delta = output_gradient.rowwise().sum() / args.batch_size; // Sum over columns to aggregate batch gradients and average
+        Vector bias_delta = output_gradient.rowwise().sum() / args.batch_size;      // Sum over columns to aggregate
+        // batch gradients and average
         Matrix input_gradient = W.transpose() * output_gradient;
 
         delta_W = -args.eta * weights_delta + args.alpha * delta_W; // Learning rate and Momentum update
@@ -61,8 +62,8 @@ class DenseLayer : public Layer {
 
 class ActivationLayer : public Layer {
   private:
-    std::function<Matrix(const Matrix &)> activation;
-    std::function<Matrix(const Matrix &)> activation_derivative;
+    std::function<Matrix(const Matrix&)> activation;
+    std::function<Matrix(const Matrix&)> activation_derivative;
 
   public:
     ActivationLayer(ActivationType activationType) {
@@ -93,13 +94,13 @@ class ActivationLayer : public Layer {
         }
     }
 
-    Matrix forward(const Matrix &input_matrix) override {
+    Matrix forward(const Matrix& input_matrix) override {
         X = input_matrix;
         Y = activation(X); // Apply the activation function to the input matrix
         return Y;
     }
 
-    Matrix backward(const Matrix &output_gradient, [[maybe_unused]] const Args &args) override {
+    Matrix backward(const Matrix& output_gradient, [[maybe_unused]] const Args& args) override {
         Matrix derivative = activation_derivative(X);
         return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
     }
@@ -108,8 +109,8 @@ class ActivationLayer : public Layer {
 class Network {
   private:
     std::vector<std::unique_ptr<Layer>> layers;
-    std::function<Scalar(const Matrix &, const Matrix &)> loss_func;
-    std::function<Matrix(const Matrix &, const Matrix &)> loss_derivative;
+    std::function<Scalar(const Matrix&, const Matrix&)> loss_func;
+    std::function<Matrix(const Matrix&, const Matrix&)> loss_derivative;
     Scalar weights_norm;
 
     std::ofstream loss_file;
@@ -144,18 +145,18 @@ class Network {
         }
     }
 
-    void addLayer(Layer *layer) { this->layers.push_back(std::unique_ptr<Layer>(layer)); }
+    void addLayer(Layer* layer) { this->layers.push_back(std::unique_ptr<Layer>(layer)); }
 
     Matrix predict(Matrix out) {
         weights_norm = 0.0;
-        for (auto &layer : layers) {
+        for (auto& layer : layers) {
             out = layer->forward(out);
             weights_norm += layer->weight_norm();
         }
         return out;
     }
 
-    void train(Matrix input, Matrix target, const Args &args) {
+    void train(Matrix input, Matrix target, const Args& args) {
         loss_file << "epoch,loss\n";
 
         const int input_size = input.cols();
@@ -188,7 +189,7 @@ class Network {
     }
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     Args args = parse_args(argc, argv);
 
     Dataset dataset = load_dataset(args.dataset_type);
@@ -215,7 +216,8 @@ int main(int argc, char *argv[]) {
 
     Matrix predictions = net.predict(dataset.features);
 
-    std::cout << "Final Predictions:" << "\n" << std::fixed << std::setprecision(4) << predictions << "\n";
+    std::cout << "Final Predictions:" << "\n"
+              << std::fixed << std::setprecision(4) << predictions << "\n";
 
     return 0;
 }

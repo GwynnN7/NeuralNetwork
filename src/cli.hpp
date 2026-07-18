@@ -13,4 +13,4 @@ struct Args {
     TaskType task_type;
 };
 
-Args parse_args(int argc, char *argv[]);
+Args parse_args(int argc, char* argv[]);

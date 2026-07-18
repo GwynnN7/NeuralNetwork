@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <iostream>
 
-Matrix load_csv(const std::string &filename) {
+Matrix load_csv(const std::string& filename) {
     std::ifstream file(filename);
     std::string line, cell;
     std::vector<Scalar> values;
@@ -24,7 +24,7 @@ Matrix load_csv(const std::string &filename) {
                 } else {
                     values.push_back(std::stof(cell));
                 }
-            } catch (const std::invalid_argument &e) {
+            } catch (const std::invalid_argument& e) {
                 throw std::runtime_error("Invalid number in dataset: " + cell);
             }
             current_cols++;

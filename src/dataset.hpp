@@ -10,7 +10,9 @@ struct Dataset {
     int num_classes;
 };
 
-enum class DatasetType { XOR, XOR_HOT, MNIST };
+enum class DatasetType { XOR,
+                         XOR_HOT,
+                         MNIST };
 
-Matrix load_csv(const std::string &filename);
+Matrix load_csv(const std::string& filename);
 Dataset load_dataset(DatasetType dataset_type);

@@ -14,5 +14,7 @@ enum class ActivationType {
     SOFTMAX // ONLY WITH CCE LOSS FUNCTION
 };
 
-enum class LossType { MSE, CCE };
-enum class TaskType { REGRESSION, CLASSIFICATION };
+enum class LossType { MSE,
+                      CCE };
+enum class TaskType { REGRESSION,
+                      CLASSIFICATION };
