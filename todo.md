@@ -1,0 +1,3 @@
+- Learning Rate Decay
+- Weights Initialization
+- Shuffle Dataset
