@@ -113,19 +113,21 @@ class Network {
     std::function<Matrix(const Matrix&, const Matrix&)> loss_derivative;
     Scalar weights_norm;
 
-    std::ofstream loss_file;
+    Args args;
+    std::ofstream log_file;
 
   public:
-    Network() {
-        loss_file.open("loss_log.csv");
-        if (!loss_file.is_open()) {
-            std::cerr << "Failed to open loss_log.csv for writing." << std::endl;
+    Network(const Args& cli_args) {
+        args = cli_args;
+        log_file.open("build/" + args.log_file);
+        if (!log_file.is_open()) {
+            std::cerr << "Failed to open " << args.log_file << " for writing." << std::endl;
         }
     }
 
     ~Network() {
-        if (loss_file.is_open()) {
-            loss_file.close();
+        if (log_file.is_open()) {
+            log_file.close();
         }
     }
 
@@ -156,8 +158,8 @@ class Network {
         return out;
     }
 
-    void train(Matrix input, Matrix target, const Args& args) {
-        loss_file << "epoch,loss\n";
+    void train(Matrix input, Matrix target) {
+        log_file << "epoch,train_loss,test_loss\n";
 
         const int input_size = input.cols();
         const int num_batches = (input_size + args.batch_size - 1) / args.batch_size;
@@ -181,11 +183,11 @@ class Network {
                     gradient = (*it)->backward(gradient, args);
                 }
             }
-            loss_file << i << "," << batch_loss << "\n";
-            loss_file.flush();
+            log_file << i << "," << batch_loss / num_batches << "," << 0.0 << "\n"; // Test loss is set to 0 for now, work in progress
+            log_file.flush();
         }
 
-        loss_file.close();
+        log_file.close();
     }
 };
 
@@ -194,25 +196,22 @@ int main(int argc, char* argv[]) {
 
     Dataset dataset = load_dataset(args.dataset_type);
 
-    Network net;
-    net.addLayer(new DenseLayer(dataset.num_features, 3));
-    net.addLayer(new ActivationLayer(ActivationType::RELU));
-    net.addLayer(new DenseLayer(3, dataset.num_classes));
-
-    switch (args.task_type) {
-    case TaskType::REGRESSION:
-        net.setLossFunction(LossType::MSE);
-        net.addLayer(new ActivationLayer(ActivationType::LINEAR));
-        break;
-    case TaskType::CLASSIFICATION:
+    Network net(args);
+    for (size_t i = 0; i < args.net_struct.size(); ++i) {
+        int input_features = i == 0 ? dataset.num_features : args.net_struct[i - 1];
+        int num_neurons = args.net_struct[i];
+        net.addLayer(new DenseLayer(input_features, num_neurons));
+        net.addLayer(new ActivationLayer(args.hidden_activation));
+    }
+    net.addLayer(new DenseLayer(args.net_struct.back(), dataset.num_classes));
+    net.addLayer(new ActivationLayer(args.output_activation));
+    if (args.output_activation == ActivationType::SOFTMAX) {
         net.setLossFunction(LossType::CCE);
-        net.addLayer(new ActivationLayer(ActivationType::SOFTMAX));
-        break;
-    default:
-        throw std::invalid_argument("Unsupported task type.");
+    } else {
+        net.setLossFunction(LossType::MSE);
     }
 
-    net.train(dataset.features, dataset.labels, args);
+    net.train(dataset.features, dataset.labels);
 
     Matrix predictions = net.predict(dataset.features);
 

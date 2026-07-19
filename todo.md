@@ -1,3 +1,5 @@
 - Learning Rate Decay
 - Weights Initialization
 - Shuffle Dataset
+- Precision Metric
+- Clean up MNIST

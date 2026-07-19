@@ -11,16 +11,24 @@ Args parse_args(int argc, char* argv[]) {
     app.add_option("dataset", args.dataset_type, "Dataset type")
         ->transform(CLI::CheckedTransformer(dataset_map, CLI::ignore_case))
         ->required();
-    app.add_option("-e,--epochs", args.epochs, "Number of epochs")->default_val(1000);
-    app.add_option("-b,--batch", args.batch_size, "Batch size")->default_val(1);
-    app.add_option("-n,--eta", args.eta, "Learning rate")->default_val(0.5);
-    app.add_option("-l,--lambda", args.lambda, "Weight decay")->default_val(0);
-    app.add_option("-a,--alpha", args.alpha, "Momentum")->default_val(0);
+    std::map<std::string, ActivationType> activation_map{{"sigmoid", ActivationType::SIGMOID}, {"relu", ActivationType::RELU}, {"tanh", ActivationType::TANH}, {"softmax", ActivationType::SOFTMAX}, {"linear", ActivationType::LINEAR}};
+    app.add_option("--hidden", args.hidden_activation, "Activation function for hidden layers")
+        ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
+        ->default_val(ActivationType::SIGMOID);
+    app.add_option("--output", args.output_activation, "Activation function for output layer")
+        ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
+        ->default_val(ActivationType::LINEAR);
 
-    std::map<std::string, TaskType> task_map{{"regression", TaskType::REGRESSION}, {"classification", TaskType::CLASSIFICATION}};
-    app.add_option("-t,--task", args.task_type, "Task type")
-        ->transform(CLI::CheckedTransformer(task_map, CLI::ignore_case))
-        ->default_val(TaskType::REGRESSION);
+    app.add_option("--network", args.net_struct, "Network structure")->default_val(std::vector<int>{2, 1});
+    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(1000);
+    app.add_option("--batch", args.batch_size, "Batch size")->default_val(1);
+    app.add_option("--eta", args.eta, "Learning rate")->default_val(0.5);
+    app.add_option("--lambda", args.lambda, "Weight decay")->default_val(0);
+    app.add_option("--alpha", args.alpha, "Momentum")->default_val(0);
+
+    app.add_option("--log", args.log_file, "Output file for loss log")->default_val("log.csv");
+    app.add_option("--dump", args.dump_file, "Dump file for model weights");
+    app.add_option("--load", args.load_file, "Load model weights from file");
 
     try {
         app.parse(argc, argv);

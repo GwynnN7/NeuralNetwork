@@ -11,10 +11,14 @@ enum class ActivationType {
     SIGMOID,
     TANH,
     LINEAR,
-    SOFTMAX // ONLY WITH CCE LOSS FUNCTION
+    SOFTMAX
 };
 
 enum class LossType { MSE,
                       CCE };
 enum class TaskType { REGRESSION,
                       CLASSIFICATION };
+
+inline int reverseInt(int i) {
+    return __builtin_bswap32(i);
+}
