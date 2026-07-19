@@ -69,5 +69,4 @@ Testing/
 .cache/
 
 # VSCode
-.clang-format
 .vscode/
