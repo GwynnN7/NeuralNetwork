@@ -28,5 +28,9 @@ target_include_directories(NeuralNet PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(NeuralNet PRIVATE Eigen3::Eigen CLI11::CLI11)
 
 target_compile_options(NeuralNet PRIVATE
+    # Standard warnings 
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>
+
+    # Optimization and CPU-specific vectorization for Eigen
+    $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3 -march=native>
 )
