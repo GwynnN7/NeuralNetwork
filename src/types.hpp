@@ -19,6 +19,11 @@ enum class LossType { MSE,
 enum class TaskType { REGRESSION,
                       CLASSIFICATION };
 
+enum class InitializationType { RANDOM,
+                                LECUN,
+                                GLOROT,
+                                HE };
+
 inline int reverseInt(int i) {
     return __builtin_bswap32(i);
 }

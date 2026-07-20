@@ -8,12 +8,14 @@ struct Args {
     std::vector<int> net_struct;
     ActivationType hidden_activation;
     ActivationType output_activation;
+    InitializationType init_type;
 
     int epochs;
     int batch_size;
     Scalar eta;
     Scalar lambda;
     Scalar alpha;
+
     Scalar train_ratio;
     Scalar dataset_ratio;
 

@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <vector>
 
 class Layer {
@@ -29,11 +30,36 @@ class DenseLayer : public Layer {
     Matrix delta_W;
 
   public:
-    DenseLayer(int input_size, int output_size) {
+    DenseLayer(int input_size, int output_size, InitializationType init_type) {
         // Initialize weights and biases pre-transposed for matrix multiplication
-        Scalar limit = 1.0 / std::sqrt(static_cast<Scalar>(input_size)); // Xavier/Glorot initialization range
-        std::uniform_real_distribution<Scalar> dist(-limit, limit);
-        W = Matrix::NullaryExpr(output_size, input_size, [&]() { return dist(get_random_generator()); });
+        Scalar distribution_value;
+        switch (init_type) {
+        case InitializationType::RANDOM:
+            distribution_value = 1.0;
+            break;
+        case InitializationType::LECUN:
+            distribution_value = std::sqrt(1.0 / static_cast<Scalar>(input_size));
+            break;
+        case InitializationType::GLOROT:
+            distribution_value = std::sqrt(6.0 / static_cast<Scalar>(input_size + output_size));
+            break;
+        case InitializationType::HE:
+            distribution_value = std::sqrt(2.0 / static_cast<Scalar>(input_size));
+            break;
+        default:
+            throw std::invalid_argument("Unsupported initialization type.");
+        }
+
+        switch (init_type) {
+        case InitializationType::HE: {
+            std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
+            W = Matrix::NullaryExpr(output_size, input_size, [&]() { return normal_dist(get_random_generator()); });
+        } break;
+        default: {
+            std::uniform_real_distribution<Scalar> uniform_dist(-distribution_value, distribution_value);
+            W = Matrix::NullaryExpr(output_size, input_size, [&]() { return uniform_dist(get_random_generator()); });
+        } break;
+        }
 
         b = Vector::Zero(output_size);
         delta_W = Matrix::Zero(output_size, input_size);
@@ -222,10 +248,10 @@ int main(int argc, char* argv[]) {
     for (size_t i = 0; i < args.net_struct.size(); ++i) {
         int input_features = i == 0 ? model_set.train_set.num_features : args.net_struct[i - 1];
         int num_neurons = args.net_struct[i];
-        net.addLayer(new DenseLayer(input_features, num_neurons));
+        net.addLayer(new DenseLayer(input_features, num_neurons, args.init_type));
         net.addLayer(new ActivationLayer(args.hidden_activation));
     }
-    net.addLayer(new DenseLayer(args.net_struct.back(), model_set.train_set.num_classes));
+    net.addLayer(new DenseLayer(args.net_struct.back(), model_set.train_set.num_classes, args.init_type));
     net.addLayer(new ActivationLayer(args.output_activation));
 
     if (args.output_activation == ActivationType::SOFTMAX) {

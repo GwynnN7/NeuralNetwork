@@ -18,10 +18,13 @@ Args parse_args(int argc, char* argv[]) {
     app.add_option("--output", args.output_activation, "Activation function for output layer")
         ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
         ->default_val(ActivationType::LINEAR);
+    app.add_option("--init", args.init_type, "Weight initialization method")
+        ->transform(CLI::CheckedTransformer(std::map<std::string, InitializationType>{{"random", InitializationType::RANDOM}, {"lecun", InitializationType::LECUN}, {"glorot", InitializationType::GLOROT}, {"he", InitializationType::HE}}, CLI::ignore_case))
+        ->default_val(InitializationType::LECUN);
 
     app.add_option("--network", args.net_struct, "Network structure")->default_val(std::vector<int>{2, 1});
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(1000);
-    app.add_option("--batch", args.batch_size, "Batch size")->default_val(1);
+    app.add_option("--batch_size", args.batch_size, "Batch size")->default_val(1);
     app.add_option("--eta", args.eta, "Learning rate")->default_val(0.5);
     app.add_option("--lambda", args.lambda, "Weight decay")->default_val(0);
     app.add_option("--alpha", args.alpha, "Momentum")->default_val(0);
