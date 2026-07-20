@@ -26,6 +26,8 @@ Args parse_args(int argc, char* argv[]) {
     app.add_option("--lambda", args.lambda, "Weight decay")->default_val(0);
     app.add_option("--alpha", args.alpha, "Momentum")->default_val(0);
 
+    app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.8);
+    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
     app.add_option("--log", args.log_file, "Output file for loss log")->default_val("log.csv");
     app.add_option("--dump", args.dump_file, "Dump file for model weights");
     app.add_option("--load", args.load_file, "Load model weights from file");

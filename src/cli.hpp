@@ -14,6 +14,8 @@ struct Args {
     Scalar eta;
     Scalar lambda;
     Scalar alpha;
+    Scalar train_ratio;
+    Scalar dataset_ratio;
 
     std::string log_file;
     std::string dump_file;
