@@ -3,7 +3,7 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-file_path = f"build/{sys.argv[1]}" if len(sys.argv) > 1 else "build/log.csv"
+file_path = f"build/{sys.argv[1]}" if len(sys.argv) > 1 else "build/release/log.csv"
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
 
 def update(frame):

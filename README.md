@@ -3,7 +3,7 @@
 A C++ neural network built using **Eigen3** for vectorized linear algebra. Designed for modularity and easy experimentation.
 
 
-## Key Features
+## Features
 
 * **Flexible Architecture**: Network structure and hyperparameters configurable via the command line.
 * **Activations Supported**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
@@ -30,7 +30,7 @@ A C++ neural network built using **Eigen3** for vectorized linear algebra. Desig
 
 ## Building the Project
 
-### Release Build (Recommended for Speed)
+### Release Build
 To enable SIMD vectorization (`-O3 -march=native`), build using the Release configuration:
 
 ```bash
@@ -94,7 +94,7 @@ Train a 2-layer network on the binary XOR problem:
 Train a 128-64 MLP on MNIST using ReLU and Softmax/CCE loss:
 
 ```bash
-./$RELEASE_DIR//NeuralNet mnist \
+./$RELEASE_DIR/NeuralNet mnist \
     --network 128 64 \
     --hidden relu \
     --output softmax \
@@ -109,7 +109,7 @@ Train a 128-64 MLP on MNIST using ReLU and Softmax/CCE loss:
 Train quickly on 10% of the MNIST dataset:
 
 ```bash
-./$RELEASE_DIR//NeuralNet mnist \
+./$RELEASE_DIR/NeuralNet mnist \
     --network 64 \
     --hidden sigmoid \
     --output sigmoid \
