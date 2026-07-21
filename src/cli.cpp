@@ -24,7 +24,7 @@ Args parse_args(int argc, char* argv[]) {
 
     app.add_option("--network", args.net_struct, "Network structure")->default_val(std::vector<int>{2, 1});
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(1000);
-    app.add_option("--batch_size", args.batch_size, "Batch size")->default_val(1);
+    app.add_option("--batch_size", args.batch_size, "Batch size")->default_val(0);
     app.add_option("--eta", args.eta, "Learning rate")->default_val(0.5);
     app.add_option("--lambda", args.lambda, "Weight decay")->default_val(0);
     app.add_option("--alpha", args.alpha, "Momentum")->default_val(0);
@@ -41,13 +41,6 @@ Args parse_args(int argc, char* argv[]) {
         std::cerr << "Error parsing arguments: " << e.what() << std::endl;
         throw std::invalid_argument("Invalid command line arguments.");
     }
-
-    std::cout << "\nTraining Configuration:" << "\n"
-              << std::left << std::setw(25) << " • Epochs:" << args.epochs << "\n"
-              << std::left << std::setw(25) << " • Batch Size:" << args.batch_size << "\n"
-              << std::left << std::setw(25) << " • Learning Rate:" << args.eta << "\n"
-              << std::left << std::setw(25) << " • Regularization:" << args.lambda << "\n"
-              << std::left << std::setw(25) << " • Momentum:" << args.alpha << "\n\n";
 
     return args;
 }
