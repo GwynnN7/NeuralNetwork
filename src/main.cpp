@@ -219,7 +219,10 @@ void Network::train(const ModelSet& model_set) {
     log_file << "epoch,train_loss,test_loss,train_acc,test_acc\n";
 
     const int input_size = model_set.train_set.num_samples;
-    const int num_batches = args.batch_size == 0 ? 0 : (input_size + args.batch_size - 1) / args.batch_size;
+    if (args.batch_size == 0) {
+        args.batch_size = input_size; // If batch size is 0, use the entire dataset as one batch
+    }
+    const int num_batches = (input_size + args.batch_size - 1) / args.batch_size;
 
     std::vector<int> indices(input_size);
     std::iota(indices.begin(), indices.end(), 0);
