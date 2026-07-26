@@ -121,8 +121,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix features = xor_data.topRows(xor_data.rows() - 1);
         Matrix labels = xor_data.bottomRows(1);
 
-        Dataset train_set{features, labels};
-        Dataset test_set{features, labels};
+        Dataset train_set{DatasetType::XOR, features, labels};
+        Dataset test_set{DatasetType::XOR, features, labels};
 
         return ModelSet{train_set, test_set};
     };
@@ -132,8 +132,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix features = xor_hot_data.topRows(xor_hot_data.rows() - 2);
         Matrix labels = xor_hot_data.bottomRows(2);
 
-        Dataset train_set{features, labels};
-        Dataset test_set{features, labels};
+        Dataset train_set{DatasetType::XOR_HOT, features, labels};
+        Dataset test_set{DatasetType::XOR_HOT, features, labels};
 
         return ModelSet{train_set, test_set};
     };
@@ -143,8 +143,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix test_features = load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
         Matrix test_labels = load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
 
-        Dataset train_set{train_features, train_labels};
-        Dataset test_set{test_features, test_labels};
+        Dataset train_set{DatasetType::MNIST, train_features, train_labels};
+        Dataset test_set{DatasetType::MNIST, test_features, test_labels};
 
         return ModelSet{train_set, test_set};
     };
@@ -154,7 +154,7 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         // Template for other datasets
 
         Matrix features, labels;
-        Dataset dataset{features, labels};
+        Dataset dataset{DatasetType::XOR, features, labels};
 
         SetIndices set_indices = holdout_dataset(dataset.num_samples, train_ratio);
 
@@ -164,8 +164,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix test_features = dataset.features(Eigen::placeholders::all, set_indices.test_indices);
         Matrix test_labels = dataset.labels(Eigen::placeholders::all, set_indices.test_indices);
 
-        Dataset train_set{train_features, train_labels};
-        Dataset test_set{test_features, test_labels};
+        Dataset train_set{DatasetType::XOR, train_features, train_labels};
+        Dataset test_set{DatasetType::XOR, test_features, test_labels};
 
         return ModelSet{train_set, test_set};
     }

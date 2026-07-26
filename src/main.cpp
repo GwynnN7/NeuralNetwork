@@ -12,7 +12,7 @@
 #include <random>
 #include <vector>
 
-bool TRAINING = true;
+bool TRAIN_MODEL = true;
 
 // DenseLayer class implementation
 
@@ -125,7 +125,7 @@ Matrix ActivationLayer::backward(const Matrix& output_gradient, [[maybe_unused]]
 Network::Network(const Args& cli_args) {
     args = cli_args;
 
-    if (TRAINING) {
+    if (TRAIN_MODEL) {
         log_file.open("build/" + args.log_file);
         if (!log_file.is_open()) {
             std::cerr << "Failed to open " << args.log_file << " for writing." << std::endl;
@@ -199,18 +199,22 @@ Matrix Network::predict(Matrix out, bool training) {
     weights_norm = 0.0;
     for (auto& layer : layers) {
         out = layer->forward(out, training);
-        weights_norm += layer->weight_norm();
+        weights_norm += layer->weightNorm();
     }
     return out;
 }
 
 void Network::train(const ModelSet& model_set) {
-    std::cout << "\nTraining Configuration:" << "\n"
+    std::cout << std::endl
+              << "\nTraining Configuration:" << "\n"
               << std::left << std::setw(25) << " • Epochs:" << args.epochs << "\n"
               << std::left << std::setw(25) << " • Batch Size:" << args.batch_size << "\n"
               << std::left << std::setw(25) << " • Learning Rate:" << args.eta << "\n"
               << std::left << std::setw(25) << " • Regularization:" << args.lambda << "\n"
-              << std::left << std::setw(25) << " • Momentum:" << args.alpha << "\n\n";
+              << std::left << std::setw(25) << " • Momentum:" << args.alpha << "\n"
+              << std::left << std::setw(25) << " • Hidden Activation:" << activation_type_to_string.at(args.hidden_activation) << "\n"
+              << std::left << std::setw(25) << " • Output Activation:" << activation_type_to_string.at(args.output_activation) << "\n"
+              << std::left << std::setw(25) << " • Weight Init:" << initialization_type_to_string.at(args.init_type) << "\n";
 
     if (!log_file.is_open()) {
         std::cerr << "Failed to open log file for writing." << std::endl;
@@ -266,55 +270,69 @@ void Network::train(const ModelSet& model_set) {
 }
 
 int main(int argc, char* argv[]) {
-    std::cout << std::endl
-              << "== Neural Network Training ==" << std::endl;
+    std::cout << std::fixed << std::setprecision(3) << std::endl
+              << "==== Neural Network Training ====" << std::endl;
+
     Args args = parse_args(argc, argv);
-    TRAINING = args.load_file == "";
+    TRAIN_MODEL = args.load_file == "";
+
+    set_random_seed(args.seed);
+
+    // Load or initialize the network
 
     Network* network = nullptr;
-    if (!TRAINING) {
-        std::cout << "Loading model from: " << args.load_file << std::endl;
+    if (!TRAIN_MODEL) {
+        std::cout << std::endl
+                  << "• Loading model from: " << args.load_file << std::endl;
         network = load_model(args.load_file, &args);
     }
 
     ModelSet model_set = load_dataset(args.dataset_type, args.train_ratio, args.dataset_ratio);
 
-    if (TRAINING) {
+    // Train and/or evaluate the model
+
+    if (TRAIN_MODEL) {
         network = new Network(args, model_set.train_set.num_features, model_set.train_set.num_classes);
         network->train(model_set);
-    } else {
-        if (network == nullptr) {
-            std::cerr << "Failed to load model from: " << args.load_file << std::endl;
-            return 1;
-        }
-        std::cout << "Model loaded successfully." << std::endl;
+    } else if (network == nullptr) {
+        std::cerr << "Failed to load model from: " << args.load_file << std::endl;
+        return 1;
     }
 
     Matrix final_train_predictions = network->predict(model_set.train_set.features);
     Matrix final_test_predictions = network->predict(model_set.test_set.features);
 
+    // Display final results
+
     if (args.output_activation != ActivationType::LINEAR) {
-        std::cout << "Final Train Accuracy: "
-                  << classification_accuracy(model_set.train_set.labels, final_train_predictions) * 100.0 << "%\n";
-        std::cout << "Final Test Accuracy: "
-                  << classification_accuracy(model_set.test_set.labels, final_test_predictions) * 100.0 << "%\n";
+        std::cout << std::endl
+                  << "Classification Results:" << "\n"
+                  << std::left << std::setw(25) << " • Train Accuracy:" << classification_accuracy(model_set.train_set.labels, final_train_predictions) * 100.0 << "%\n"
+                  << std::left << std::setw(25) << " • Test Accuracy:" << classification_accuracy(model_set.test_set.labels, final_test_predictions) * 100.0 << "%\n"
+                  << std::left << std::setw(25) << " • Train Confidence:" << classification_confidence(model_set.train_set.labels, final_train_predictions) << "\n"
+                  << std::left << std::setw(25) << " • Test Confidence:" << classification_confidence(model_set.test_set.labels, final_test_predictions) << "\n\n";
     }
+
+    std::cout << "================================" << std::endl;
 
     std::uniform_int_distribution<int> dist(0, model_set.test_set.num_samples - 1);
-    int sample_index = dist(get_random_generator());
+    for (int i = 0; i < std::min(5, model_set.test_set.num_samples); ++i) {
+        int sample_index = dist(get_random_generator());
 
-    std::cout << "\nSample Prediction (Test Set Index " << sample_index << ")\n";
+        std::cout << "\nSample Prediction (Index: " << sample_index << ")\n";
+        std::cout << "Target Label: " << model_set.test_set.labels.col(sample_index).transpose() << "\n";
+        std::cout << "Prediction:   " << final_test_predictions.col(sample_index).transpose() << "\n";
 
-    std::cout << "Target Label: "
-              << model_set.test_set.labels.col(sample_index).transpose() << "\n";
-    std::cout << "Prediction:   "
-              << std::fixed << std::setprecision(4)
-              << final_test_predictions.col(sample_index).transpose() << "\n";
+        std::cout << std::endl
+                  << "-------------------------------" << std::endl;
+    }
 
     if (args.dump_file != "") {
-        std::cout << "Saving model to: " << args.dump_file << std::endl;
+        std::cout << std::endl
+                  << "• Saving model to: " << args.dump_file << std::endl;
         dump(args.dump_file, args, network);
     }
+
     delete network;
 
     return 0;

@@ -22,6 +22,8 @@ struct Args {
     std::string log_file;
     std::string dump_file;
     std::string load_file;
+
+    int seed;
 };
 
 Args parse_args(int argc, char* argv[]);

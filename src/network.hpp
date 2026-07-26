@@ -14,7 +14,7 @@ class Layer {
     virtual ~Layer() = default;
     virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
     virtual Matrix backward(const Matrix& output_gradient, const Args& args) = 0;
-    virtual Scalar weight_norm() const { return 0.0; }
+    virtual Scalar weightNorm() const { return 0.0; }
 };
 
 class DenseLayer : public Layer {
@@ -34,7 +34,7 @@ class DenseLayer : public Layer {
 
     Matrix getWeights() const { return W; }
     Vector getBiases() const { return b; }
-    Scalar weight_norm() const override { return W.squaredNorm(); }
+    Scalar weightNorm() const override { return W.squaredNorm(); }
 };
 
 class ActivationLayer : public Layer {
@@ -59,14 +59,15 @@ class Network {
     Args args;
     std::ofstream log_file;
 
+    void setLossFunction(LossType lossType);
+    void addLayer(Layer* layer);
+
   public:
     Network(const Args& cli_args);
     Network(const Args& cli_args, const int num_features, const int num_classes);
     Network(const Args& cli_args, std::vector<Matrix> weights, std::vector<Vector> biases);
     ~Network();
 
-    void setLossFunction(LossType lossType);
-    void addLayer(Layer* layer);
     Matrix predict(Matrix out, bool training = false);
     void train(const ModelSet& model_set);
 

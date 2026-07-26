@@ -2,12 +2,19 @@
 
 #include "types.hpp"
 
+#include <numeric>
 #include <random>
+#include <string>
+#include <vector>
 
 inline std::mt19937& get_random_generator() {
     static std::random_device rd;
     static std::mt19937 gen(rd());
     return gen;
+}
+
+inline void set_random_seed(unsigned int seed) {
+    get_random_generator().seed(seed);
 }
 
 // ACTIVATION FUNCTIONS
@@ -109,4 +116,32 @@ inline double classification_accuracy(const Matrix& target, const Matrix& predic
     }
 
     return static_cast<Scalar>(correct_predictions) / num_samples;
+}
+
+inline std::string classification_confidence(const Matrix& target, const Matrix& prediction) {
+    int num_samples = target.cols();
+    std::vector<Scalar> confidences;
+    confidences.reserve(num_samples);
+
+    if (target.rows() == 1) {
+        for (int i = 0; i < num_samples; ++i) {
+            Scalar target_val = target(0, i);
+            Scalar pred_val = prediction(0, i);
+            confidences.push_back(target_val == 1.0 ? pred_val : (1.0 - pred_val));
+        }
+    } else {
+        for (int i = 0; i < num_samples; ++i) {
+            int target_class;
+            target.col(i).maxCoeff(&target_class);
+            confidences.push_back(prediction(target_class, i));
+        }
+    }
+
+    Scalar mean_confidence = std::accumulate(confidences.begin(), confidences.end(), 0.0) / num_samples;
+    Scalar variance = std::accumulate(confidences.begin(), confidences.end(), 0.0, [&](Scalar sum, Scalar val) {
+                          return sum + (val - mean_confidence) * (val - mean_confidence);
+                      }) /
+                      num_samples;
+
+    return to_string_rounded(mean_confidence * 100.0, 2) + "% ± " + to_string_rounded(variance * 100.0, 2) + "%";
 }
