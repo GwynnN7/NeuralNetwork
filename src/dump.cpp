@@ -4,14 +4,13 @@
 
 // Dump and Load everythin needed to reconstruct the model
 
-void dump(const std::string& filename, const Args& args, Network* network) {
-    std::ofstream dump_file(filename, std::ios::binary);
+void dump(const std::string& model_path, const Args& args, Network* network) {
+    std::ofstream dump_file(model_path + "/model.bin", std::ios::binary);
     if (!dump_file.is_open()) {
-        std::cerr << "Failed to open " << filename << " for writing." << std::endl;
+        std::println(stderr, "Failed to open {} for writing.", model_path + "/model.bin");
         return;
     } else {
-        std::cout << std::endl
-                  << "• Dumping model to: " << filename << std::endl;
+        std::println("\n- Dumping model to: {}", model_path + "/model.bin");
     }
 
     int magic_number = 0x4E4E4554; // "NNET" in hex
@@ -38,20 +37,19 @@ void dump(const std::string& filename, const Args& args, Network* network) {
     }
 }
 
-Network* load_model(const std::string& filename, Args* args) {
-    std::ifstream dump_file(filename, std::ios::binary);
+Network* load_model(const std::string& model_path, Args* args) {
+    std::ifstream dump_file(model_path + "/model.bin", std::ios::binary);
     if (!dump_file.is_open()) {
-        std::cerr << "Failed to open " << filename << " for reading." << std::endl;
+        std::println(stderr, "Failed to open {} for reading.", model_path + "/model.bin");
         return nullptr;
     } else {
-        std::cout << std::endl
-                  << "• Loading model from: " << filename << std::endl;
+        std::println("\n- Loading model from: {}", model_path + "/model.bin");
     }
 
     int magic_number;
     dump_file.read(reinterpret_cast<char*>(&magic_number), sizeof(magic_number));
     if (magic_number != 0x4E4E4554) { // "NNET" in hex
-        std::cerr << "Invalid model file format." << std::endl;
+        std::println(stderr, "Invalid model file format");
         return nullptr;
     }
 

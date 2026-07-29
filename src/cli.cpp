@@ -3,6 +3,8 @@
 #include "CLI/CLI.hpp"
 #include "types.hpp"
 
+#include <print>
+
 Args parse_args(int argc, char* argv[]) {
     Args args;
     CLI::App app{"Neural Network Training"};
@@ -15,8 +17,8 @@ Args parse_args(int argc, char* argv[]) {
         ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
         ->default_val(ActivationType::LINEAR);
     app.add_option("--init", args.init_type, "Weight initialization method")
-        ->transform(CLI::CheckedTransformer(std::map<std::string, InitializationType>{{"random", InitializationType::RANDOM}, {"lecun", InitializationType::LECUN}, {"glorot", InitializationType::GLOROT}, {"he", InitializationType::HE}}, CLI::ignore_case))
-        ->default_val(InitializationType::LECUN);
+        ->transform(CLI::CheckedTransformer(std::map<std::string, InitType>{{"random", InitType::RANDOM}, {"lecun", InitType::LECUN}, {"glorot", InitType::GLOROT}, {"he", InitType::HE}}, CLI::ignore_case))
+        ->default_val(InitType::LECUN);
     app.add_option("dataset", args.dataset_type, "Dataset type")
         ->transform(CLI::CheckedTransformer(std::map<std::string, DatasetType>{{"xor", DatasetType::XOR}, {"xor_hot", DatasetType::XOR_HOT}, {"mnist", DatasetType::MNIST}}, CLI::ignore_case))
         ->required();
@@ -30,18 +32,35 @@ Args parse_args(int argc, char* argv[]) {
 
     app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.8);
     app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
-    app.add_option("--log", args.log_file, "Output file for loss log")->default_val("log.csv");
-    app.add_option("--dump", args.dump_file, "Dump file for model weights");
-    app.add_option("--load", args.load_file, "Load model weights from file");
+    app.add_option("--name", args.name, "Name for the model and log files")->default_val("model");
+    app.add_flag("--dump", args.dump, "Dump model weights");
+    app.add_flag("--load", args.load, "Load model weights from file");
 
     app.add_option("--seed", args.seed, "Random seed")->default_val(42);
+    app.add_option("--kfold", args.k_folds, "Number of folds for cross-validation")->default_val(1);
+    app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
 
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
-        std::cerr << "Error parsing arguments: " << e.what() << std::endl;
+        std::println(stderr, "Error parsing arguments: {}", e.what());
         throw std::invalid_argument("Invalid command line arguments.");
     }
 
     return args;
+}
+
+void print_args(const Args& args) {
+    std::println("\nTraining Configuration:");
+
+    std::println(" • {:<25}{}", "Epochs:", args.epochs);
+    std::println(" • {:<25}{}", "Batch Size:", args.batch_size);
+    std::println(" • {:<25}{}", "Learning Rate:", args.eta);
+    std::println(" • {:<25}{}", "Regularization:", args.lambda);
+    std::println(" • {:<25}{}", "Momentum:", args.alpha);
+    std::println(" • {:<25}{}", "K-Folds:", args.k_folds);
+    std::println(" • {:<25}{}", "Shuffle:", args.shuffle ? "True" : "False");
+    std::println(" • {:<25}{}", "Hidden Activation:", activation_type_to_string.at(args.hidden_activation));
+    std::println(" • {:<25}{}", "Output Activation:", activation_type_to_string.at(args.output_activation));
+    std::println(" • {:<25}{}", "Weight Init:", initialization_type_to_string.at(args.init_type));
 }

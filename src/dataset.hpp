@@ -2,42 +2,26 @@
 
 #include "types.hpp"
 
-#include <iomanip>
-#include <iostream>
 #include <map>
-
-enum class DatasetType { XOR,
-                         XOR_HOT,
-                         MNIST };
-
-const std::map<DatasetType, std::string> dataset_type_to_string = {
-    {DatasetType::XOR, "XOR"},
-    {DatasetType::XOR_HOT, "XOR_HOT"},
-    {DatasetType::MNIST, "MNIST"},
-};
+#include <print>
 
 struct Dataset {
     DatasetType type;
     Matrix features, labels;
     int num_samples, num_features, num_classes;
 
-    Dataset(DatasetType type, const Matrix& features, const Matrix& labels) : type(type), features(features), labels(labels) {
+    Dataset(DatasetType type, const Matrix& features, const Matrix& labels)
+        : type(type), features(features), labels(labels) {
+
         num_samples = features.cols();
         num_features = features.rows();
         num_classes = labels.rows();
-    }
-};
 
-struct ModelSet {
-    Dataset train_set, test_set;
-
-    ModelSet(const Dataset& train_set, const Dataset& test_set) : train_set(train_set), test_set(test_set) {
-        std::cout << std::endl
-                  << "Dataset Info:" << "\n"
-                  << std::left << std::setw(25) << " • Type: " << dataset_type_to_string.at(train_set.type) << "\n"
-                  << std::left << std::setw(25) << " • Samples: " << train_set.num_samples << "  |  " << test_set.num_samples << "\n"
-                  << std::left << std::setw(25) << " • Features:" << train_set.num_features << "  |  " << test_set.num_features << "\n"
-                  << std::left << std::setw(25) << " • Classes:" << train_set.num_classes << "  |  " << test_set.num_classes << "\n";
+        std::println("\nDataset Info:");
+        std::println("{:<25}{}", " • Type:", dataset_type_to_string.at(type));
+        std::println("{:<25}{}", " • Samples:", num_samples);
+        std::println("{:<25}{}", " • Features:", num_features);
+        std::println("{:<25}{}", " • Classes:", num_classes);
     }
 };
 
@@ -47,4 +31,5 @@ struct SetIndices {
 };
 
 Matrix load_csv(const std::string& filename);
-ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar dataset_ratio);
+Dataset load_dataset(DatasetType dataset_type, Scalar dataset_ratio);
+std::vector<SetIndices> split_dataset(int num_samples, int k, Scalar train_ratio, bool shuffle = true);

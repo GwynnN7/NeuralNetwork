@@ -2,8 +2,11 @@
 
 #include "functions.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 Matrix load_csv(const std::string& filename) {
     std::ifstream file(filename);
@@ -50,7 +53,7 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     int magic_number = 0, num_images = 0, num_rows = 0, num_cols = 0;
 
     file.read((char*)&magic_number, sizeof(magic_number));
-    if (reverseInt(magic_number) != 2051) {
+    if (std::byteswap(magic_number) != 2051) {
         throw std::runtime_error("Invalid MNIST image file");
     }
 
@@ -58,8 +61,8 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     file.read((char*)&num_rows, sizeof(num_rows));
     file.read((char*)&num_cols, sizeof(num_cols));
 
-    num_images = static_cast<int>(reverseInt(num_images) * dataset_ratio);
-    int image_size = reverseInt(num_rows) * reverseInt(num_cols);
+    num_images = static_cast<int>(std::byteswap(num_images) * dataset_ratio);
+    int image_size = std::byteswap(num_rows) * std::byteswap(num_cols);
 
     std::vector<unsigned char> raw_pixels(num_images * image_size);
     file.read((char*)raw_pixels.data(), raw_pixels.size());
@@ -81,12 +84,12 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     int magic_number = 0, num_images = 0;
 
     file.read((char*)&magic_number, sizeof(magic_number));
-    if (reverseInt(magic_number) != 2049) {
+    if (std::byteswap(magic_number) != 2049) {
         throw std::runtime_error("Invalid MNIST label file");
     }
 
     file.read((char*)&num_images, sizeof(num_images));
-    num_images = static_cast<int>(reverseInt(num_images) * dataset_ratio);
+    num_images = static_cast<int>(std::byteswap(num_images) * dataset_ratio);
 
     std::vector<unsigned char> raw_labels(num_images);
     file.read((char*)raw_labels.data(), num_images);
@@ -99,21 +102,47 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     return one_hot_labels;
 }
 
-SetIndices holdout_dataset(int num_samples, Scalar train_ratio) {
-    int train_size = static_cast<int>(num_samples * train_ratio);
+std::vector<SetIndices> split_dataset(int num_samples, int k, Scalar train_ratio, bool shuffle) {
     std::vector<int> indices(num_samples);
     std::iota(indices.begin(), indices.end(), 0);
+    if (shuffle) {
+        std::ranges::shuffle(indices, get_random_generator());
+    }
 
-    std::shuffle(indices.begin(), indices.end(), get_random_generator());
+    // Holdout split
+    if (k <= 1 || k > num_samples) {
+        std::vector<SetIndices> folds(1);
+        int train_size = static_cast<int>(num_samples * train_ratio);
 
-    SetIndices set_indices;
-    set_indices.train_indices.assign(indices.begin(), indices.begin() + train_size);
-    set_indices.test_indices.assign(indices.begin() + train_size, indices.end());
+        folds[0].train_indices.assign(indices.begin(), indices.begin() + train_size);
+        folds[0].test_indices.assign(indices.begin() + train_size, indices.end());
+        return folds;
+    }
 
-    return set_indices;
+    std::vector<SetIndices> folds(k);
+    int fold_size = num_samples / k;
+    int remaining_samples = num_samples % k; // Remaining samples to distribute among the first folds
+
+    int current_start = 0;
+    for (int i = 0; i < k; ++i) {
+        int current_fold_size = fold_size + (i < remaining_samples ? 1 : 0); // Add one more sample to each fold until the remaining samples are distributed
+        int end = current_start + current_fold_size;
+
+        // Assign Test Set
+        folds[i].test_indices.assign(indices.begin() + current_start, indices.begin() + end);
+
+        // Assign Train Set (Samples before + Samples after)
+        folds[i].train_indices.assign(indices.begin(), indices.begin() + current_start);
+        folds[i].train_indices.insert(folds[i].train_indices.end(), indices.begin() + end, indices.end());
+
+        // Move the sliding window forward
+        current_start = end;
+    }
+
+    return folds;
 }
 
-ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar dataset_ratio) {
+Dataset load_dataset(DatasetType dataset_type, Scalar dataset_ratio) {
     switch (dataset_type) {
     case DatasetType::XOR: {
         Matrix xor_data = load_csv("dataset/xor/xor.csv").transpose();
@@ -121,10 +150,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix features = xor_data.topRows(xor_data.rows() - 1);
         Matrix labels = xor_data.bottomRows(1);
 
-        Dataset train_set{DatasetType::XOR, features, labels};
-        Dataset test_set{DatasetType::XOR, features, labels};
-
-        return ModelSet{train_set, test_set};
+        Dataset dataset{DatasetType::XOR, features, labels};
+        return dataset;
     };
     case DatasetType::XOR_HOT: {
         Matrix xor_hot_data = load_csv("dataset/xor/xor_hot.csv").transpose();
@@ -132,10 +159,8 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix features = xor_hot_data.topRows(xor_hot_data.rows() - 2);
         Matrix labels = xor_hot_data.bottomRows(2);
 
-        Dataset train_set{DatasetType::XOR_HOT, features, labels};
-        Dataset test_set{DatasetType::XOR_HOT, features, labels};
-
-        return ModelSet{train_set, test_set};
+        Dataset dataset{DatasetType::XOR_HOT, features, labels};
+        return dataset;
     };
     case DatasetType::MNIST: {
         Matrix train_features = load_mnist_images("dataset/mnist/train-images-idx3-ubyte", dataset_ratio).transpose();
@@ -143,31 +168,17 @@ ModelSet load_dataset(DatasetType dataset_type, Scalar train_ratio, Scalar datas
         Matrix test_features = load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
         Matrix test_labels = load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
 
-        Dataset train_set{DatasetType::MNIST, train_features, train_labels};
-        Dataset test_set{DatasetType::MNIST, test_features, test_labels};
+        Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
+        Matrix all_labels(train_labels.rows(), train_labels.cols() + test_labels.cols());
 
-        return ModelSet{train_set, test_set};
+        // Unify datasets to use my k-fold cross-validation function (don't pass --shuffle, use train_ratio=~0.85 and k=0 to use the original train/test split)
+        all_features << train_features, test_features;
+        all_labels << train_labels, test_labels;
+
+        return Dataset{DatasetType::MNIST, all_features, all_labels};
     };
     default: {
-        throw std::invalid_argument("Unsupported dataset type.");
-
-        // Template for other datasets
-
-        Matrix features, labels;
-        Dataset dataset{DatasetType::XOR, features, labels};
-
-        SetIndices set_indices = holdout_dataset(dataset.num_samples, train_ratio);
-
-        Matrix train_features = dataset.features(Eigen::placeholders::all, set_indices.train_indices);
-        Matrix train_labels = dataset.labels(Eigen::placeholders::all, set_indices.train_indices);
-
-        Matrix test_features = dataset.features(Eigen::placeholders::all, set_indices.test_indices);
-        Matrix test_labels = dataset.labels(Eigen::placeholders::all, set_indices.test_indices);
-
-        Dataset train_set{DatasetType::XOR, train_features, train_labels};
-        Dataset test_set{DatasetType::XOR, test_features, test_labels};
-
-        return ModelSet{train_set, test_set};
+        throw std::invalid_argument("Unsupported dataset type");
     }
     }
 }

@@ -1,9 +1,7 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <iomanip>
 #include <map>
-#include <sstream>
 #include <string>
 
 using Scalar = double;
@@ -24,10 +22,14 @@ enum class LossType { MSE,
 enum class TaskType { REGRESSION,
                       CLASSIFICATION };
 
-enum class InitializationType { RANDOM,
-                                LECUN,
-                                GLOROT,
-                                HE };
+enum class InitType { RANDOM,
+                      LECUN,
+                      GLOROT,
+                      HE };
+
+enum class DatasetType { XOR,
+                         XOR_HOT,
+                         MNIST };
 
 const std::map<ActivationType, std::string> activation_type_to_string = {
     {ActivationType::RELU, "ReLU"},
@@ -36,30 +38,26 @@ const std::map<ActivationType, std::string> activation_type_to_string = {
     {ActivationType::LINEAR, "Linear"},
     {ActivationType::SOFTMAX, "Softmax"},
 };
+
 const std::map<LossType, std::string> loss_type_to_string = {
     {LossType::MSE, "Mean Squared Error"},
     {LossType::CCE, "Categorical Cross-Entropy"},
 };
+
 const std::map<TaskType, std::string> task_type_to_string = {
     {TaskType::REGRESSION, "Regression"},
     {TaskType::CLASSIFICATION, "Classification"},
 };
-const std::map<InitializationType, std::string> initialization_type_to_string = {
-    {InitializationType::RANDOM, "Random"},
-    {InitializationType::LECUN, "LeCun"},
-    {InitializationType::GLOROT, "Glorot"},
-    {InitializationType::HE, "He"},
+
+const std::map<InitType, std::string> initialization_type_to_string = {
+    {InitType::RANDOM, "Random"},
+    {InitType::LECUN, "LeCun"},
+    {InitType::GLOROT, "Glorot"},
+    {InitType::HE, "He"},
 };
 
-// Utility function to reverse the byte order of an integer (used for reading MNIST files)
-inline int reverseInt(int i) {
-    return __builtin_bswap32(i);
-}
-
-// Utility function to convert a rounded value to a string
-template <typename T>
-inline std::string to_string_rounded(const T value, const int n = 4) {
-    std::ostringstream out;
-    out << std::fixed << std::setprecision(n) << value;
-    return out.str();
-}
+const std::map<DatasetType, std::string> dataset_type_to_string = {
+    {DatasetType::XOR, "XOR"},
+    {DatasetType::XOR_HOT, "XOR_HOT"},
+    {DatasetType::MNIST, "MNIST"},
+};

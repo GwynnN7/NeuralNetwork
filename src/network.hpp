@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cli.hpp"
+#include "dataset.hpp"
 #include "types.hpp"
 
 class Layer {
@@ -22,7 +23,7 @@ class DenseLayer : public Layer {
     Matrix delta_W;
 
   public:
-    DenseLayer(int input_size, int output_size, InitializationType init_type);
+    DenseLayer(int input_size, int output_size, InitType init_type);
     DenseLayer(Matrix weights, Vector biases) : W(weights), b(biases) {
         delta_W = Matrix::Zero(W.rows(), W.cols());
     }
@@ -65,7 +66,7 @@ class Network {
     ~Network() = default;
 
     Matrix predict(Matrix out, bool training = false);
-    void train(const ModelSet& model_set);
+    void train(const Dataset& dataset, const SetIndices& indices, int fold_index);
 
     std::vector<const DenseLayer*> getDenseLayers() const;
 };

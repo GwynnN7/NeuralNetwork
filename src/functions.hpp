@@ -4,8 +4,8 @@
 
 #include <map>
 #include <numeric>
+#include <print>
 #include <random>
-#include <string>
 #include <vector>
 
 // Random Functions
@@ -79,7 +79,7 @@ const std::map<ActivationType, std::pair<std::function<Matrix(const Matrix&)>, s
 // Loss Functions
 
 inline double mse(const Matrix& target, const Matrix& prediction) {
-    return (prediction - target).array().square().colwise().sum().mean();
+    return (prediction - target).array().square().colwise().sum().mean(); // Averaged across output neurons and samples
 }
 
 inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
@@ -100,7 +100,7 @@ const std::map<LossType, std::pair<std::function<double(const Matrix&, const Mat
     {LossType::MSE, {mse, mse_derivative}},
     {LossType::CCE, {cce, cce_derivative}}};
 
-// Accuracy Functions
+// Final Metrics Functions
 
 inline double classification_accuracy(const Matrix& target, const Matrix& prediction) {
     int correct_predictions = 0;
@@ -133,8 +133,13 @@ inline double classification_accuracy(const Matrix& target, const Matrix& predic
     return static_cast<Scalar>(correct_predictions) / num_samples;
 }
 
+struct ConfidenceResult {
+    Scalar mean;
+    Scalar variance;
+};
+
 // Calculate the classification confidence as a percentage with mean and variance
-inline std::string classification_confidence(const Matrix& target, const Matrix& prediction) {
+inline ConfidenceResult classification_confidence(const Matrix& target, const Matrix& prediction) {
     int num_samples = target.cols();
     std::vector<Scalar> confidences;
     confidences.reserve(num_samples); // Reserve space for efficiency
@@ -161,5 +166,39 @@ inline std::string classification_confidence(const Matrix& target, const Matrix&
                       }) /
                       num_samples;
 
-    return to_string_rounded(mean_confidence * 100.0, 2) + "% ± " + to_string_rounded(variance * 100.0, 2) + "%";
+    return {mean_confidence, variance};
 }
+
+struct MetricsResult {
+    Scalar accuracy = 0.0;
+    Scalar confidence_mean = 0.0;
+    Scalar confidence_variance = 0.0;
+    Scalar mean_squared_error = 0.0;
+
+    void print(bool is_regression) const {
+        if (is_regression) {
+            std::println(" • Mean Squared Error: {:.3f}", mean_squared_error);
+            return;
+        }
+        std::println(" • Accuracy:   {:.2f}%", accuracy * 100.0);
+        std::println(" • Confidence: {:.3f}±{:.3f}", confidence_mean, std::sqrt(confidence_variance));
+    }
+
+    void update(const Matrix& target, const Matrix& prediction, bool is_regression) {
+        if (is_regression) {
+            mean_squared_error += mse(target, prediction);
+            return;
+        }
+        accuracy += classification_accuracy(target, prediction);
+        ConfidenceResult train_conf = classification_confidence(target, prediction);
+        confidence_mean += train_conf.mean;
+        confidence_variance += train_conf.variance;
+    }
+
+    void average(int num_folds) {
+        accuracy /= num_folds;
+        confidence_mean /= num_folds;
+        confidence_variance /= num_folds;
+        mean_squared_error /= num_folds;
+    }
+};
