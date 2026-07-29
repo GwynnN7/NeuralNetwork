@@ -5,6 +5,7 @@
 #include "network.hpp"
 #include "types.hpp"
 
+#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -14,10 +15,11 @@
 
 bool TRAIN_MODEL = true;
 
-// DenseLayer class implementation
+// -- DenseLayer class implementation --
 
+// DenseLayer constructor that initializes weights based on the specified initialization type
 DenseLayer::DenseLayer(int input_size, int output_size, InitializationType init_type) {
-    // Initialize weights and biases pre-transposed for matrix multiplication
+    // Determine the distribution value based on the initialization type
     Scalar distribution_value;
     switch (init_type) {
     case InitializationType::RANDOM:
@@ -36,6 +38,7 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitializationType init_
         throw std::invalid_argument("Unsupported initialization type.");
     }
 
+    // Initialize weights and biases pre-transposed for efficient matrix multiplication
     switch (init_type) {
     case InitializationType::HE: {
         std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
@@ -51,9 +54,10 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitializationType init_
     delta_W = Matrix::Zero(output_size, input_size);
 }
 
+// Forward pass through the DenseLayer, saving input and output for backpropagation
 Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
     if (W.cols() != input_matrix.rows()) {
-        throw std::runtime_error("Dimension mismatch: Layer expects " + std::to_string(W.cols()) + " features, but received " + std::to_string(input_matrix.rows()));
+        throw std::runtime_error("Dimension mismatch: " + std::to_string(W.cols()) + " features expected, but " + std::to_string(input_matrix.rows()) + " features provided");
     }
     Matrix output_matrix = (W * input_matrix).colwise() + b; // Multiply weights with input and add bias
     if (training) {
@@ -62,51 +66,34 @@ Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
     return output_matrix;
 }
 
+// Backward pass through the DenseLayer, updating weights and biases based on the output gradient
 Matrix DenseLayer::backward(const Matrix& output_gradient, const Args& args) {
-    Matrix weights_delta = (output_gradient * X.transpose()) / args.batch_size; // Average over batch size for gradient
-    Vector bias_delta = output_gradient.rowwise().sum() / args.batch_size;      // Sum over columns to aggregate
-    // batch gradients and average
-    Matrix input_gradient = W.transpose() * output_gradient;
+    Matrix weights_delta = (output_gradient * X.transpose()) / args.batch_size; // Calculate the delta of weights (average over the batch)
+    Vector bias_delta = output_gradient.rowwise().sum() / args.batch_size;      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
+    Matrix input_gradient = W.transpose() * output_gradient;                    // Calculate the neuron gradient to propagate to the previous layer
 
-    delta_W = -args.eta * weights_delta + args.alpha * delta_W; // Learning rate and Momentum update
+    delta_W = -args.eta * weights_delta + args.alpha * delta_W; // Update delta_W with learning rate and momentum
     Matrix l2_penalty = args.eta * args.lambda * W;             // L2 regularization term
 
-    W = W + delta_W - l2_penalty;
-    b -= args.eta * bias_delta;
+    W = W + delta_W - l2_penalty; // Update weights with L2 regularization and momentum
+    b -= args.eta * bias_delta;   // Update biases with learning rate
 
     return input_gradient;
 }
 
-// ActivationLayer class implementation
+// -- ActivationLayer class implementation --
 
+// ActivationLayer constructor that initializes the activation function and its derivative based on the specified ActivationType
 ActivationLayer::ActivationLayer(ActivationType activationType) {
-    switch (activationType) {
-    case ActivationType::RELU:
-        activation = relu;
-        activation_derivative = relu_derivative;
-        break;
-    case ActivationType::SIGMOID:
-        activation = sigmoid;
-        activation_derivative = sigmoid_derivative;
-        break;
-    case ActivationType::TANH:
-        activation = tanh_activation;
-        activation_derivative = tanh_derivative;
-        break;
-    case ActivationType::SOFTMAX:
-        activation = softmax;
-        activation_derivative = softmax_derivative;
-        break;
-    case ActivationType::LINEAR:
-        activation = linear;
-        activation_derivative = linear_derivative;
-        break;
-    default:
+    try {
+        activation = activation_map.at(activationType).first;
+        activation_derivative = activation_map.at(activationType).second;
+    } catch (const std::out_of_range&) {
         throw std::invalid_argument("Unsupported activation function type.");
-        break;
     }
 }
 
+// Forward pass through the ActivationLayer, applying the activation function to the input matrix
 Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
     Matrix output_matrix = activation(input_matrix); // Apply the activation function to the input matrix
     if (training) {
@@ -115,23 +102,19 @@ Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
     return output_matrix;
 }
 
+// Backward pass through the ActivationLayer, calculating the gradient with respect to the input
 Matrix ActivationLayer::backward(const Matrix& output_gradient, [[maybe_unused]] const Args& args) {
-    Matrix derivative = activation_derivative(X);
+    Matrix derivative = activation_derivative(X);    // Calculate the derivative of the activation function with respect to the input
     return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
 }
 
-// Network class implementation
+// -- Network class implementation --
 
+// Network constructor that initializes args and sets the loss function
 Network::Network(const Args& cli_args) {
     args = cli_args;
 
-    if (TRAIN_MODEL) {
-        log_file.open("build/" + args.log_file);
-        if (!log_file.is_open()) {
-            std::cerr << "Failed to open " << args.log_file << " for writing." << std::endl;
-        }
-    }
-
+    // SOFTMAX activation is used with Categorical Cross-Entropy loss, while other activations use Mean Squared Error loss
     if (args.output_activation == ActivationType::SOFTMAX) {
         setLossFunction(LossType::CCE);
     } else {
@@ -139,6 +122,7 @@ Network::Network(const Args& cli_args) {
     }
 }
 
+// Network constructor that initializes pairs of DenseLayer and ActivationLayer based on the defined network structure
 Network::Network(const Args& cli_args, const int num_features, const int num_classes) : Network(cli_args) {
     for (size_t i = 0; i < args.net_struct.size(); ++i) {
         int input_features = i == 0 ? num_features : args.net_struct[i - 1];
@@ -150,6 +134,7 @@ Network::Network(const Args& cli_args, const int num_features, const int num_cla
     addLayer(new ActivationLayer(args.output_activation));
 }
 
+// Network constructor that initializes pairs or DenseLayer and ActivationLayer with loaded weights and biases
 Network::Network(const Args& cli_args, std::vector<Matrix> weights, std::vector<Vector> biases) : Network(cli_args) {
     for (size_t i = 0; i < args.net_struct.size(); ++i) {
         addLayer(new DenseLayer(weights[i], biases[i]));
@@ -159,32 +144,22 @@ Network::Network(const Args& cli_args, std::vector<Matrix> weights, std::vector<
     addLayer(new ActivationLayer(args.output_activation));
 }
 
-Network::~Network() {
-    if (log_file.is_open()) {
-        log_file.close();
-    }
-}
-
+// Utility function to set the loss function and its derivative based on the specified LossType
 void Network::setLossFunction(LossType lossType) {
-    switch (lossType) {
-    case LossType::MSE:
-        loss_func = mse;
-        loss_derivative = mse_derivative;
-        break;
-    case LossType::CCE:
-        loss_func = cce;
-        loss_derivative = cce_derivative;
-        break;
-    default:
+    try {
+        loss_func = loss_map.at(lossType).first;
+        loss_derivative = loss_map.at(lossType).second;
+    } catch (const std::out_of_range&) {
         throw std::invalid_argument("Unsupported loss function type.");
-        break;
     }
 }
 
+// Add the passed layer to the network's layer list
 void Network::addLayer(Layer* layer) {
     this->layers.push_back(std::unique_ptr<Layer>(layer));
 }
 
+// Utility function to get all DenseLayer pointers from the network
 std::vector<const DenseLayer*> Network::getDenseLayers() const {
     std::vector<const DenseLayer*> dense_layers;
     for (const auto& layer : layers) {
@@ -195,6 +170,7 @@ std::vector<const DenseLayer*> Network::getDenseLayers() const {
     return dense_layers;
 }
 
+// Forward pass through the network, saving weights norm for loss calculation with regularization
 Matrix Network::predict(Matrix out, bool training) {
     weights_norm = 0.0;
     for (auto& layer : layers) {
@@ -204,6 +180,7 @@ Matrix Network::predict(Matrix out, bool training) {
     return out;
 }
 
+// Train the network using the dataset provided by the model_set
 void Network::train(const ModelSet& model_set) {
     std::cout << std::endl
               << "\nTraining Configuration:" << "\n"
@@ -216,52 +193,63 @@ void Network::train(const ModelSet& model_set) {
               << std::left << std::setw(25) << " • Output Activation:" << activation_type_to_string.at(args.output_activation) << "\n"
               << std::left << std::setw(25) << " • Weight Init:" << initialization_type_to_string.at(args.init_type) << "\n";
 
+    // Open log file for writing loss curves and accuracy metrics
+    std::ofstream log_file;
+    log_file.open("build/" + args.log_file);
     if (!log_file.is_open()) {
         std::cerr << "Failed to open log file for writing." << std::endl;
         return;
     }
     log_file << "epoch,train_loss,test_loss,train_acc,test_acc\n";
 
+    // Calculate the number of batches
     const int input_size = model_set.train_set.num_samples;
     if (args.batch_size == 0) {
         args.batch_size = input_size; // If batch size is 0, use the entire dataset as one batch
     }
     const int num_batches = (input_size + args.batch_size - 1) / args.batch_size;
 
+    // Create a vector of increasing indices for shuffling the training data
     std::vector<int> indices(input_size);
     std::iota(indices.begin(), indices.end(), 0);
 
     for (int i = 0; i < args.epochs; i++) {
-
+        // Evaluate the model on the test set and calculate the loss and accuracy
         Matrix test_prediction = predict(model_set.test_set.features);
         Scalar test_loss = loss_func(model_set.test_set.labels, test_prediction) + args.lambda * weights_norm;
         Scalar test_acc = args.output_activation != ActivationType::LINEAR ? classification_accuracy(model_set.test_set.labels, test_prediction) * 100.0 : 0.0;
 
+        // Shuffle the training data indices for current epoch (for stochastic gradient descent and minibatch training)
         std::shuffle(indices.begin(), indices.end(), get_random_generator());
         Matrix epoch_features = model_set.train_set.features(Eigen::placeholders::all, indices);
         Matrix epoch_labels = model_set.train_set.labels(Eigen::placeholders::all, indices);
 
-        Scalar epoch_loss = 0.0;
-        Scalar train_acc = 0.0;
+        Scalar epoch_loss = 0.0, train_acc = 0.0;
         for (int j = 0; j < num_batches; j++) {
+            // Determine the start and end indices for the current batch
             const int index_start = j * args.batch_size;
             const int index_end = std::min(index_start + args.batch_size, input_size);
             const int current_batch_size = index_end - index_start;
 
+            // Extract the current batch of features and labels
             Matrix batch_features = epoch_features.middleCols(index_start, current_batch_size);
             Matrix batch_label = epoch_labels.middleCols(index_start, current_batch_size);
 
+            // Forward pass to get predictions for the current batch
             Matrix batch_prediction = predict(batch_features, true);
 
-            epoch_loss += loss_func(batch_label, batch_prediction) + args.lambda * weights_norm;
+            // Calculate the loss and accuracy for the current batch and accumulate for the epoch
+            epoch_loss += loss_func(batch_label, batch_prediction) + args.lambda * weights_norm; // Include regularization term in the loss calculation
             train_acc += args.output_activation != ActivationType::LINEAR ? classification_accuracy(batch_label, batch_prediction) * 100.0 : 0.0;
 
+            // Start the backward pass to update weights and biases based on the output loss gradient
             Matrix gradient = loss_derivative(batch_label, batch_prediction);
             for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
                 gradient = (*it)->backward(gradient, args);
             }
         }
 
+        // Log the average loss and accuracy for the current epoch to the log file
         log_file << i << "," << epoch_loss / num_batches << "," << test_loss << "," << train_acc / num_batches << "," << test_acc << "\n";
         log_file.flush();
     }
@@ -276,33 +264,39 @@ int main(int argc, char* argv[]) {
     Args args = parse_args(argc, argv);
     TRAIN_MODEL = args.load_file == "";
 
+    // Set the random seed for reproducibility
     set_random_seed(args.seed);
 
-    // Load or initialize the network
-
-    Network* network = nullptr;
-    if (!TRAIN_MODEL) {
-        std::cout << std::endl
-                  << "• Loading model from: " << args.load_file << std::endl;
-        network = load_model(args.load_file, &args);
-    }
-
+    // Load the dataset
     ModelSet model_set = load_dataset(args.dataset_type, args.train_ratio, args.dataset_ratio);
 
-    // Train and/or evaluate the model
-
-    if (TRAIN_MODEL) {
+    // Load or initialize the network
+    Network* network = nullptr;
+    if (!TRAIN_MODEL) {
+        network = load_model(args.load_file, &args);
+        if (network == nullptr) {
+            std::cerr << "Failed to load the model. Exiting." << std::endl;
+            return 1;
+        }
+    } else {
         network = new Network(args, model_set.train_set.num_features, model_set.train_set.num_classes);
+
+        // Start training
         network->train(model_set);
-    } else if (network == nullptr) {
-        std::cerr << "Failed to load model from: " << args.load_file << std::endl;
-        return 1;
     }
 
+    // Evaluate the model
     Matrix final_train_predictions = network->predict(model_set.train_set.features);
     Matrix final_test_predictions = network->predict(model_set.test_set.features);
 
-    // Display final results
+    // Save and cleanup
+    if (args.dump_file != "" && TRAIN_MODEL) {
+        dump(args.dump_file, args, network);
+    }
+    delete network;
+
+    // ======================================================================================
+    //                              Display final results
 
     if (args.output_activation != ActivationType::LINEAR) {
         std::cout << std::endl
@@ -326,14 +320,6 @@ int main(int argc, char* argv[]) {
         std::cout << std::endl
                   << "-------------------------------" << std::endl;
     }
-
-    if (args.dump_file != "") {
-        std::cout << std::endl
-                  << "• Saving model to: " << args.dump_file << std::endl;
-        dump(args.dump_file, args, network);
-    }
-
-    delete network;
 
     return 0;
 }

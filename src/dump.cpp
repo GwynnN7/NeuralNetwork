@@ -1,10 +1,17 @@
 #include "dump.hpp"
 
+#include <fstream>
+
+// Dump and Load everythin needed to reconstruct the model
+
 void dump(const std::string& filename, const Args& args, Network* network) {
     std::ofstream dump_file(filename, std::ios::binary);
     if (!dump_file.is_open()) {
         std::cerr << "Failed to open " << filename << " for writing." << std::endl;
         return;
+    } else {
+        std::cout << std::endl
+                  << "• Dumping model to: " << filename << std::endl;
     }
 
     int magic_number = 0x4E4E4554; // "NNET" in hex
@@ -36,6 +43,9 @@ Network* load_model(const std::string& filename, Args* args) {
     if (!dump_file.is_open()) {
         std::cerr << "Failed to open " << filename << " for reading." << std::endl;
         return nullptr;
+    } else {
+        std::cout << std::endl
+                  << "• Loading model from: " << filename << std::endl;
     }
 
     int magic_number;
@@ -73,6 +83,5 @@ Network* load_model(const std::string& filename, Args* args) {
         layers_biases.push_back(biases);
     }
 
-    Network* network = new Network(*args, layers_weights, layers_biases);
-    return network;
+    return new Network(*args, layers_weights, layers_biases);
 }

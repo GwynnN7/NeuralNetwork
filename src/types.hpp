@@ -18,6 +18,17 @@ enum class ActivationType {
     SOFTMAX
 };
 
+enum class LossType { MSE,
+                      CCE };
+
+enum class TaskType { REGRESSION,
+                      CLASSIFICATION };
+
+enum class InitializationType { RANDOM,
+                                LECUN,
+                                GLOROT,
+                                HE };
+
 const std::map<ActivationType, std::string> activation_type_to_string = {
     {ActivationType::RELU, "ReLU"},
     {ActivationType::SIGMOID, "Sigmoid"},
@@ -25,25 +36,14 @@ const std::map<ActivationType, std::string> activation_type_to_string = {
     {ActivationType::LINEAR, "Linear"},
     {ActivationType::SOFTMAX, "Softmax"},
 };
-
-enum class LossType { MSE,
-                      CCE };
 const std::map<LossType, std::string> loss_type_to_string = {
     {LossType::MSE, "Mean Squared Error"},
     {LossType::CCE, "Categorical Cross-Entropy"},
 };
-
-enum class TaskType { REGRESSION,
-                      CLASSIFICATION };
 const std::map<TaskType, std::string> task_type_to_string = {
     {TaskType::REGRESSION, "Regression"},
     {TaskType::CLASSIFICATION, "Classification"},
 };
-
-enum class InitializationType { RANDOM,
-                                LECUN,
-                                GLOROT,
-                                HE };
 const std::map<InitializationType, std::string> initialization_type_to_string = {
     {InitializationType::RANDOM, "Random"},
     {InitializationType::LECUN, "LeCun"},
@@ -51,10 +51,12 @@ const std::map<InitializationType, std::string> initialization_type_to_string = 
     {InitializationType::HE, "He"},
 };
 
+// Utility function to reverse the byte order of an integer (used for reading MNIST files)
 inline int reverseInt(int i) {
     return __builtin_bswap32(i);
 }
 
+// Utility function to convert a rounded value to a string
 template <typename T>
 inline std::string to_string_rounded(const T value, const int n = 4) {
     std::ostringstream out;

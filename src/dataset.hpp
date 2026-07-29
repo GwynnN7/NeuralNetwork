@@ -18,11 +18,8 @@ const std::map<DatasetType, std::string> dataset_type_to_string = {
 
 struct Dataset {
     DatasetType type;
-    Matrix features;
-    Matrix labels;
-    int num_samples;
-    int num_features;
-    int num_classes;
+    Matrix features, labels;
+    int num_samples, num_features, num_classes;
 
     Dataset(DatasetType type, const Matrix& features, const Matrix& labels) : type(type), features(features), labels(labels) {
         num_samples = features.cols();
@@ -32,8 +29,7 @@ struct Dataset {
 };
 
 struct ModelSet {
-    Dataset train_set;
-    Dataset test_set;
+    Dataset train_set, test_set;
 
     ModelSet(const Dataset& train_set, const Dataset& test_set) : train_set(train_set), test_set(test_set) {
         std::cout << std::endl

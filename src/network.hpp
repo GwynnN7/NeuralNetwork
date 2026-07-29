@@ -3,8 +3,6 @@
 #include "cli.hpp"
 #include "types.hpp"
 
-#include <fstream>
-
 class Layer {
   protected:
     Matrix X;
@@ -55,9 +53,7 @@ class Network {
     std::function<Scalar(const Matrix&, const Matrix&)> loss_func;
     std::function<Matrix(const Matrix&, const Matrix&)> loss_derivative;
     Scalar weights_norm;
-
     Args args;
-    std::ofstream log_file;
 
     void setLossFunction(LossType lossType);
     void addLayer(Layer* layer);
@@ -66,7 +62,7 @@ class Network {
     Network(const Args& cli_args);
     Network(const Args& cli_args, const int num_features, const int num_classes);
     Network(const Args& cli_args, std::vector<Matrix> weights, std::vector<Vector> biases);
-    ~Network();
+    ~Network() = default;
 
     Matrix predict(Matrix out, bool training = false);
     void train(const ModelSet& model_set);
