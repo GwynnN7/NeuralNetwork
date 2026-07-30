@@ -6,7 +6,7 @@
 #include <map>
 #include <string>
 
-using Scalar = double;
+using Scalar = float;
 typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> Matrix;
 typedef Eigen::Vector<Scalar, Eigen::Dynamic> Vector;
 

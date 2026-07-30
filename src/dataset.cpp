@@ -23,11 +23,8 @@ Matrix load_csv(const std::string& filename) {
         int current_cols = 0;
         while (std::getline(lineStream, cell, ',')) {
             try {
-                if (typeid(Scalar) == typeid(double)) {
-                    values.push_back(std::stod(cell));
-                } else {
-                    values.push_back(std::stof(cell));
-                }
+
+                values.push_back(static_cast<Scalar>(std::stod(cell)));
             } catch (const std::invalid_argument& e) {
                 throw std::runtime_error("Invalid number in dataset: " + cell);
             }

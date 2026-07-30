@@ -12,6 +12,8 @@ endif()
 
 
 find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(OpenMP REQUIRED)
+find_package(BLAS REQUIRED)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -25,13 +27,18 @@ file(GLOB SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
 add_executable(NeuralNet ${SOURCES})
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported)
+if(ipo_supported)
+    set_target_properties(NeuralNet PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
 target_include_directories(NeuralNet PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(NeuralNet PRIVATE Eigen3::Eigen CLI11::CLI11)
+target_link_libraries(NeuralNet PRIVATE Eigen3::Eigen CLI11::CLI11 OpenMP::OpenMP_CXX ${BLAS_LIBRARIES})
+
+target_compile_definitions(NeuralNet PRIVATE EIGEN_USE_BLAS)
 
 target_compile_options(NeuralNet PRIVATE
-    # Standard warnings 
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>
-
-    # Optimization and CPU-specific vectorization for Eigen
-    $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3 -march=native>
+    $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3 -march=native -ffast-math>
 )

@@ -65,7 +65,7 @@ const std::map<ActivationType, std::pair<ActivationFunction, ActivationFunction>
 
 // Loss Functions
 
-inline double mse(const Matrix& target, const Matrix& prediction) {
+inline Scalar mse(const Matrix& target, const Matrix& prediction) {
     return (prediction - target).array().square().colwise().sum().mean(); // Averaged across output neurons and samples
 }
 
@@ -73,8 +73,8 @@ inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
     return 2 * (prediction - target);
 }
 
-inline double cce(const Matrix& target, const Matrix& prediction) {
-    double epsilon = 1e-8; // Small value to prevent log(0)
+inline Scalar cce(const Matrix& target, const Matrix& prediction) {
+    Scalar epsilon = 1e-8; // Small value to prevent log(0)
     Matrix pred_clipped = prediction.cwiseMax(epsilon).cwiseMin(1.0 - epsilon);
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
@@ -89,14 +89,14 @@ const std::map<LossType, std::pair<LossFunction, LossDerivative>> loss_map = {
 
 // Metrics Functions
 
-inline double classification_accuracy(const Matrix& target, const Matrix& prediction) {
+inline Scalar classification_accuracy(const Matrix& target, const Matrix& prediction) {
     int correct_predictions = 0;
     int num_samples = target.cols();
 
     if (target.rows() == 1) { // Binary classification
         for (int i = 0; i < num_samples; ++i) {
-            double pred_val = prediction(0, i) >= 0.5 ? 1.0 : 0.0; // Convert prediction to binary class
-            double target_val = target(0, i);                      // Get the target class
+            Scalar pred_val = prediction(0, i) >= 0.5 ? 1.0 : 0.0; // Convert prediction to binary class
+            Scalar target_val = target(0, i);                      // Get the target class
 
             // Count correct predictions
             if (pred_val == target_val) {
