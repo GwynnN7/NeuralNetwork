@@ -5,28 +5,24 @@ A C++ neural network built using **Eigen3** for vectorized linear algebra. Desig
 
 ## Features
 
-* **Flexible Architecture**: Network structure and hyperparameters configurable via the command line.
+* **Flexible Architecture**: Network structure and hyperparameters are fully configurable via a Grid Search CSV file.
+* **Rigorous Evaluation**: Nested K-Fold Cross-Validation for model selection and performance estimation. 
+* **Model Selection**: Automatically prioritizes models based on maximum Validation Accuracy, using minimum Validation Loss.
 * **Activations Supported**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
 * **Loss Functions**: `MSE` (Mean Squared Error) and `CCE` (Categorical Cross-Entropy) with automatic selection based on output activation.
 * **Architecture Features**:
-    * `L2 Weight Decay` ($\lambda$).
-    * `Momentum` ($\alpha$)
-    * `Batch`, `Mini-batch`, `Stochastic` Gradient Descent.
-    * `Random`, `Lecun`, `Glorot`, `He` weights initialization methods.
-  
-* **Datasets Supported**:
-  * `XOR` & `XOR_HOT` (1-neuron binary & multi-class XOR).
-  * `MNIST` (Handwritten digit recognition).
-* **Logging**: Live plotting of Loss and Accuracy Curves by logging per-epoch loss and accuracy metrics to a CSV file.
-
+    * `L2 Weight Decay` ($\lambda$) and `Momentum` ($\alpha$).
+    * `Mini-batch` and `Stochastic Gradient Descent`.
+    * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
+* **Datasets Supported**: `XOR`, `XOR_HOT`, and `MNIST`.
+* **Logging & Visualization**: CSV logging per-fold and live plotting of Loss/Accuracy curves using `live_plot.py`.
 
 ## Prerequisites & Dependencies
 
-* **C++ Compiler**: GCC or Clang supporting C++17.
+* **C++ Compiler**: GCC or Clang supporting **C++20/23** (requires `<print>`, `std::format`, `std::ranges`).
 * **CMake**: Version 3.14 or higher.
 * **Eigen3**: Installed on your system.
 * **CLI11**: Fetched automatically via CMake.
-
 
 ## Building the Project
 
@@ -39,94 +35,72 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release -j4
 ```
 
-### Debug Build
-For debugging with optimizations disabled, build using the Debug configuration:
+## Configuration: Grid Search CSV
 
-```bash
-mkdir -p build/Debug
-cmake -B build/Debug -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/Debug -j4
+Network parameters are defined in a CSV file passed to the `--params` argument. 
+
+**Format (`artifacts/grid.csv`):**
+```csv
+id,net_struct,hidden,output,init,batch,eta,lambda,alpha
+0,128-64,relu,softmax,he,32,0.01,0.001,0.9
+1,64,sigmoid,sigmoid,glorot,16,0.1,1e-4,0.0
 ```
-
 
 ## CLI Options
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
 | `dataset` | Dataset type: `xor`, `xor_hot`, `mnist` | *Required* |
-| `--network` | List of hidden layer sizes (e.g., `--network 128 64`) | `2 1` |
-| `--hidden` | Hidden activation: `sigmoid`, `relu`, `tanh`, `softmax`, `linear` | `sigmoid` |
-| `--output` | Output activation: `linear`, `sigmoid`, `relu`, `tanh`, `softmax` | `linear` |
-| `--init` | Weight initialization method: `lecun`, `random`, `glorot`, `he` | `lecun` |
-| `--epochs` | Number of training epochs | `1000` |
-| `--batch_size` | Mini-batch size | `1` |
-| `--eta` | Learning rate ($\eta$) | `0.5` |
-| `--lambda` | L2 Regularization / Weight decay ($\lambda$) | `0` |
-| `--alpha` | Momentum multiplier ($\alpha$) | `0` |
-| `--train_ratio` | Training set split ratio | `0.8` |
-| `--dataset_ratio` | Subset fraction of dataset to load (for fast testing) | `1.0` |
-| `--log` | Output CSV log filename | `log.csv` |
-| `--dump` | Output file path to dump model weights | *None* |
-| `--load` | Input file path to load model weights | *None* |
-
+| `--params` | Path to CSV file containing model configurations for grid search | `dataset/grid.csv` |
+| `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
+| `--train` | Flag to execute the training & cross-validation loop | `false` |
+| `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
+| `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
+| `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
+| `--epochs` | Maximum number of training epochs per fold | `500` |
+| `--train_ratio`| Training set split ratio (when $K=1$) | `0.85` |
+| `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
+| `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |
+| `--seed` | Random seed for reproducibility | `42` |
 
 ## Quickstart Examples
-### Launch Script
-Use the available scripts to launch the project
-```bash
-./launch
-python plot.py log.csv
-```
 
-### 1. Standard XOR Problem (Single Output Neuron)
-Train a 2-layer network on the binary XOR problem:
+### 1. Training with Nested Cross-Validation on MNIST
+Run a 2x2 nested K-fold cross-validation on 40% of the MNIST dataset, evaluating the models defined in `grid.csv`, and dumping the final weights:
 
 ```bash
-./$RELEASE_DIR/NeuralNet xor \
-    --network 4 \
-    --hidden sigmoid \
-    --output sigmoid \
+./build/Release/NeuralNet mnist \
+    --name mnist_test \
+    --train \
+    --dump \
+    --params artifacts/grid.csv \
+    --dataset_ratio 0.4 \
+    --inner-k 2 \
+    --outer-k 2 \
     --epochs 200 \
-    --eta 0.5
+    --shuffle
 ```
 
-### 2. MNIST Classification
-Train a 128-64 MLP on MNIST using ReLU and Softmax/CCE loss:
+### 2. Loading and Inference
+To load previously dumped models from the `artifacts/mnist_test` directory and run inference against the dataset:
 
 ```bash
-./$RELEASE_DIR/NeuralNet mnist \
-    --network 128 64 \
-    --hidden relu \
-    --output softmax \
-    --init he \
-    --epochs 500 \
-    --batch 128 \
-    --eta 0.4 \
-    --dataset_ratio 1.0
-```
-
-### 3. Rapid Prototyping (Subset of MNIST)
-Train quickly on 10% of the MNIST dataset:
-
-```bash
-./$RELEASE_DIR/NeuralNet mnist \
-    --network 64 \
-    --hidden sigmoid \
-    --output sigmoid \
-    --epochs 100 \
-    --batch 32 \
-    --eta 0.1 \
-    --dataset_ratio 0.1
-```
-
+./build/Release/NeuralNet mnist \
+    --name mnist_test \
+    --params artifacts/grid.csv \
+    --dataset_ratio 0.4
+``` 
+*(Note: Omitting `--train` automatically triggers inference mode on `.bin` files found in the target directory)*.
 
 ## Logging & Output
 
-During training, metrics are continuously appended to `build/<log_file>` in CSV format:
+During training, metrics are continuously aggregated to CSV files in artifact directory (`artifacts/<name>/`). The files follow a naming convention to separate inner-fold validations from outer-fold evaluations:
 
-```csv
-epoch,train_loss,test_loss,train_acc,test_acc
-0,2.3025,2.3012,11.2,10.8
-1,0.4120,0.3890,88.4,89.1
-...
+* **Inner Folds:** `outer<N>_inner_m<ID>.csv` (e.g., `outer0_inner_m0.csv`)
+* **Outer Folds (Best Models):** `outer<N>_m<ID>.csv`
+
+**Live Visualization:**
+Monitor training in real-time by targeting the artifact directory with the plotting script:
+```bash
+python live_plot.py mnist_test
 ```

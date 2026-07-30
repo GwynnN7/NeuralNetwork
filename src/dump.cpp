@@ -2,26 +2,26 @@
 
 #include <fstream>
 
-// Dump and Load everythin needed to reconstruct the model
+// Dump and Load everything needed to reconstruct the model
 
-void dump(const std::string& model_path, const Args& args, Network* network) {
-    std::ofstream dump_file(model_path + "/model.bin", std::ios::binary);
+void dump_model(const std::string& file, const Model& model, Network* network) {
+    std::ofstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
-        std::println(stderr, "Failed to open {} for writing.", model_path + "/model.bin");
+        std::println(stderr, "Failed to open {} for writing.", file);
         return;
     } else {
-        std::println("\n- Dumping model to: {}", model_path + "/model.bin");
+        std::println("\n- Dumping model to: {}", file);
     }
 
     int magic_number = 0x4E4E4554; // "NNET" in hex
     dump_file.write(reinterpret_cast<const char*>(&magic_number), sizeof(magic_number));
 
-    dump_file.write(reinterpret_cast<const char*>(&args.hidden_activation), sizeof(args.hidden_activation));
-    dump_file.write(reinterpret_cast<const char*>(&args.output_activation), sizeof(args.output_activation));
+    dump_file.write(reinterpret_cast<const char*>(&model.hidden_activation), sizeof(model.hidden_activation));
+    dump_file.write(reinterpret_cast<const char*>(&model.output_activation), sizeof(model.output_activation));
 
-    int num_layers = static_cast<int>(args.net_struct.size());
+    int num_layers = static_cast<int>(model.net_struct.size());
     dump_file.write(reinterpret_cast<const char*>(&num_layers), sizeof(num_layers));
-    dump_file.write(reinterpret_cast<const char*>(args.net_struct.data()), num_layers * sizeof(int));
+    dump_file.write(reinterpret_cast<const char*>(model.net_struct.data()), num_layers * sizeof(int));
 
     std::vector<const DenseLayer*> dense_layers = network->getDenseLayers();
     for (const auto* layer : dense_layers) {
@@ -37,13 +37,13 @@ void dump(const std::string& model_path, const Args& args, Network* network) {
     }
 }
 
-Network* load_model(const std::string& model_path, Args* args) {
-    std::ifstream dump_file(model_path + "/model.bin", std::ios::binary);
+Network* load_model(const std::string& file) {
+    std::ifstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
-        std::println(stderr, "Failed to open {} for reading.", model_path + "/model.bin");
+        std::println(stderr, "Failed to open {} for reading.", file);
         return nullptr;
     } else {
-        std::println("\n- Loading model from: {}", model_path + "/model.bin");
+        std::println("\n- Loading model from: {}", file);
     }
 
     int magic_number;
@@ -52,14 +52,14 @@ Network* load_model(const std::string& model_path, Args* args) {
         std::println(stderr, "Invalid model file format");
         return nullptr;
     }
-
-    dump_file.read(reinterpret_cast<char*>(&args->hidden_activation), sizeof(args->hidden_activation));
-    dump_file.read(reinterpret_cast<char*>(&args->output_activation), sizeof(args->output_activation));
+    Model model;
+    dump_file.read(reinterpret_cast<char*>(&model.hidden_activation), sizeof(model.hidden_activation));
+    dump_file.read(reinterpret_cast<char*>(&model.output_activation), sizeof(model.output_activation));
 
     int num_layers;
     dump_file.read(reinterpret_cast<char*>(&num_layers), sizeof(num_layers));
-    args->net_struct.resize(num_layers);
-    dump_file.read(reinterpret_cast<char*>(args->net_struct.data()), num_layers * sizeof(int));
+    model.net_struct.resize(num_layers);
+    dump_file.read(reinterpret_cast<char*>(model.net_struct.data()), num_layers * sizeof(int));
 
     std::vector<Matrix> layers_weights;
     std::vector<Vector> layers_biases;
@@ -81,5 +81,5 @@ Network* load_model(const std::string& model_path, Args* args) {
         layers_biases.push_back(biases);
     }
 
-    return new Network(*args, layers_weights, layers_biases);
+    return new Network(model, layers_weights, layers_biases);
 }

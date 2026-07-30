@@ -1,6 +1,6 @@
 #include "dataset.hpp"
 
-#include "functions.hpp"
+#include "utility.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -102,7 +102,10 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     return one_hot_labels;
 }
 
-std::vector<SetIndices> split_dataset(int num_samples, int k, Scalar train_ratio, bool shuffle) {
+std::vector<DataSplit> split_dataset(int num_samples, int k, Scalar train_ratio, bool shuffle) {
+    if (k == 0) {
+        return std::vector<DataSplit>();
+    }
     std::vector<int> indices(num_samples);
     std::iota(indices.begin(), indices.end(), 0);
     if (shuffle) {
@@ -110,8 +113,8 @@ std::vector<SetIndices> split_dataset(int num_samples, int k, Scalar train_ratio
     }
 
     // Holdout split
-    if (k <= 1 || k > num_samples) {
-        std::vector<SetIndices> folds(1);
+    if (k == 1 || k > num_samples) {
+        std::vector<DataSplit> folds(1);
         int train_size = static_cast<int>(num_samples * train_ratio);
 
         folds[0].train_indices.assign(indices.begin(), indices.begin() + train_size);
@@ -119,7 +122,7 @@ std::vector<SetIndices> split_dataset(int num_samples, int k, Scalar train_ratio
         return folds;
     }
 
-    std::vector<SetIndices> folds(k);
+    std::vector<DataSplit> folds(k);
     int fold_size = num_samples / k;
     int remaining_samples = num_samples % k; // Remaining samples to distribute among the first folds
 
@@ -171,7 +174,7 @@ Dataset load_dataset(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
         Matrix all_labels(train_labels.rows(), train_labels.cols() + test_labels.cols());
 
-        // Unify datasets to use my k-fold cross-validation function (don't pass --shuffle, use train_ratio=~0.85 and k=0 to use the original train/test split)
+        // Unify datasets to use my k-fold cross-validation function (use --innerk 0 and default args to use the original train/test split)
         all_features << train_features, test_features;
         all_labels << train_labels, test_labels;
 

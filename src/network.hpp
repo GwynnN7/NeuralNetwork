@@ -1,8 +1,24 @@
 #pragma once
 
-#include "cli.hpp"
 #include "dataset.hpp"
+#include "functions.hpp"
 #include "types.hpp"
+
+struct Model {
+    int id = 0;
+    std::vector<int> net_struct;
+    ActivationType hidden_activation;
+    ActivationType output_activation;
+    InitType init_type;
+
+    int epochs = 0;
+    int batch_size = 0;
+    Scalar eta = 0.0;
+    Scalar lambda = 0.0;
+    Scalar alpha = 0.0;
+};
+
+std::vector<Model> load_grid_search(const std::string& filename);
 
 class Layer {
   protected:
@@ -12,7 +28,7 @@ class Layer {
   public:
     virtual ~Layer() = default;
     virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
-    virtual Matrix backward(const Matrix& output_gradient, const Args& args) = 0;
+    virtual Matrix backward(const Matrix& output_gradient, const Model& model) = 0;
     virtual Scalar weightNorm() const { return 0.0; }
 };
 
@@ -29,7 +45,7 @@ class DenseLayer : public Layer {
     }
 
     Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, const Args& args) override;
+    Matrix backward(const Matrix& output_gradient, const Model& model) override;
 
     Matrix getWeights() const { return W; }
     Vector getBiases() const { return b; }
@@ -38,35 +54,37 @@ class DenseLayer : public Layer {
 
 class ActivationLayer : public Layer {
   private:
-    std::function<Matrix(const Matrix&)> activation;
-    std::function<Matrix(const Matrix&)> activation_derivative;
+    ActivationFunction activation;
+    ActivationFunction activation_derivative;
 
   public:
     ActivationLayer(ActivationType activationType);
 
     Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, [[maybe_unused]] const Args& args) override;
+    Matrix backward(const Matrix& output_gradient, [[maybe_unused]] const Model& model) override;
 };
 
 class Network {
   private:
     std::vector<std::unique_ptr<Layer>> layers;
-    std::function<Scalar(const Matrix&, const Matrix&)> loss_func;
-    std::function<Matrix(const Matrix&, const Matrix&)> loss_derivative;
+    LossFunction loss_func;
+    LossDerivative loss_derivative;
     Scalar weights_norm;
-    Args args;
 
     void setLossFunction(LossType lossType);
-    void addLayer(Layer* layer);
+    void addLayer(std::unique_ptr<Layer> layer);
 
   public:
-    Network(const Args& cli_args);
-    Network(const Args& cli_args, const int num_features, const int num_classes);
-    Network(const Args& cli_args, std::vector<Matrix> weights, std::vector<Vector> biases);
+    Network(const Model& model);
+    Network(const Model& model, const int num_features, const int num_classes);
+    Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases);
     ~Network() = default;
 
-    Matrix predict(Matrix out, bool training = false);
-    void train(const Dataset& dataset, const SetIndices& indices, int fold_index);
+    Model model;
+
+    Matrix predict(const Matrix& out, bool training = false);
+    SplitResults train(const Dataset& dataset, const DataSplit& indices, int epochs, int model_index, int outer_index, int inner_index, bool logging = true);
 
     std::vector<const DenseLayer*> getDenseLayers() const;
+    LossFunction getLossFunction() const { return loss_func; }
 };

@@ -8,37 +8,24 @@
 Args parse_args(int argc, char* argv[]) {
     Args args;
     CLI::App app{"Neural Network Training"};
-
-    const std::map<std::string, ActivationType> activation_map{{"sigmoid", ActivationType::SIGMOID}, {"relu", ActivationType::RELU}, {"tanh", ActivationType::TANH}, {"softmax", ActivationType::SOFTMAX}, {"linear", ActivationType::LINEAR}};
-    app.add_option("--hidden", args.hidden_activation, "Activation function for hidden layers")
-        ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
-        ->default_val(ActivationType::SIGMOID);
-    app.add_option("--output", args.output_activation, "Activation function for output layer")
-        ->transform(CLI::CheckedTransformer(activation_map, CLI::ignore_case))
-        ->default_val(ActivationType::LINEAR);
-    app.add_option("--init", args.init_type, "Weight initialization method")
-        ->transform(CLI::CheckedTransformer(std::map<std::string, InitType>{{"random", InitType::RANDOM}, {"lecun", InitType::LECUN}, {"glorot", InitType::GLOROT}, {"he", InitType::HE}}, CLI::ignore_case))
-        ->default_val(InitType::LECUN);
     app.add_option("dataset", args.dataset_type, "Dataset type")
         ->transform(CLI::CheckedTransformer(std::map<std::string, DatasetType>{{"xor", DatasetType::XOR}, {"xor_hot", DatasetType::XOR_HOT}, {"mnist", DatasetType::MNIST}}, CLI::ignore_case))
         ->required();
 
-    app.add_option("--network", args.net_struct, "Network structure")->default_val(std::vector<int>{2, 1});
-    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(1000);
-    app.add_option("--batch_size", args.batch_size, "Batch size")->default_val(0);
-    app.add_option("--eta", args.eta, "Learning rate")->default_val(0.5);
-    app.add_option("--lambda", args.lambda, "Weight decay")->default_val(0);
-    app.add_option("--alpha", args.alpha, "Momentum")->default_val(0);
-
-    app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.8);
-    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
     app.add_option("--name", args.name, "Name for the model and log files")->default_val("model");
-    app.add_flag("--dump", args.dump, "Dump model weights");
-    app.add_flag("--load", args.load, "Load model weights from file");
+    app.add_option("--params", args.model_file, "File containing model parameters for grid search")->default_val("artifacts/grid.csv");
+    app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1);
+    app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1);
+
+    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(500);
+    app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
+    app.add_flag("--dump", args.dump, "Dump model weights to file after total retraining")->default_val(false);
+    app.add_flag("--train", args.train, "Train the model")->default_val(false);
+
+    app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.85);
+    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
 
     app.add_option("--seed", args.seed, "Random seed")->default_val(42);
-    app.add_option("--kfold", args.k_folds, "Number of folds for cross-validation")->default_val(1);
-    app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
 
     try {
         app.parse(argc, argv);
@@ -48,19 +35,4 @@ Args parse_args(int argc, char* argv[]) {
     }
 
     return args;
-}
-
-void print_args(const Args& args) {
-    std::println("\nTraining Configuration:");
-
-    std::println(" • {:<25}{}", "Epochs:", args.epochs);
-    std::println(" • {:<25}{}", "Batch Size:", args.batch_size);
-    std::println(" • {:<25}{}", "Learning Rate:", args.eta);
-    std::println(" • {:<25}{}", "Regularization:", args.lambda);
-    std::println(" • {:<25}{}", "Momentum:", args.alpha);
-    std::println(" • {:<25}{}", "K-Folds:", args.k_folds);
-    std::println(" • {:<25}{}", "Shuffle:", args.shuffle ? "True" : "False");
-    std::println(" • {:<25}{}", "Hidden Activation:", activation_type_to_string.at(args.hidden_activation));
-    std::println(" • {:<25}{}", "Output Activation:", activation_type_to_string.at(args.output_activation));
-    std::println(" • {:<25}{}", "Weight Init:", initialization_type_to_string.at(args.init_type));
 }

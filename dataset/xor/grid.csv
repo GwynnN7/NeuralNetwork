@@ -1,0 +1,4 @@
+id,net,hidden,output,init,batch_size,eta,lambda,alpha
+0,2,sigmoid,sigmoid,glorot,1,0.1,1e-4,0
+1,2-2,tanh,linear,lecun,10,1e-2,1e-6,0
+2,3,sigmoid,sigmoid,lecun,40,0.1,1e-4,0

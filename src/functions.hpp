@@ -2,23 +2,11 @@
 
 #include "types.hpp"
 
+#include <algorithm>
 #include <map>
 #include <numeric>
 #include <print>
-#include <random>
 #include <vector>
-
-// Random Functions
-
-inline std::mt19937& get_random_generator() {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    return gen;
-}
-
-inline void set_random_seed(unsigned int seed) {
-    get_random_generator().seed(seed);
-}
 
 // Activation Functions
 
@@ -57,8 +45,7 @@ inline Matrix linear_derivative(const Matrix& X) {
 }
 
 inline Matrix softmax(const Matrix& X) {
-    Matrix max_vals = X.colwise().maxCoeff();
-    Matrix inputs = X.array() - max_vals.replicate(X.rows(), 1).array();
+    Matrix inputs = X.rowwise() - X.colwise().maxCoeff(); // Subtract the max value in each column for numerical stability
 
     inputs = inputs.array().exp();
     Matrix sum = inputs.colwise().sum();
@@ -66,10 +53,10 @@ inline Matrix softmax(const Matrix& X) {
 }
 
 inline Matrix softmax_derivative(const Matrix& X) {
-    return Matrix::Ones(X.rows(), X.cols());
+    return linear_derivative(X); // The derivative of softmax is handled in the CCE loss function
 }
 
-const std::map<ActivationType, std::pair<std::function<Matrix(const Matrix&)>, std::function<Matrix(const Matrix&)>>> activation_map = {
+const std::map<ActivationType, std::pair<ActivationFunction, ActivationFunction>> activation_map = {
     {ActivationType::SIGMOID, {sigmoid, sigmoid_derivative}},
     {ActivationType::RELU, {relu, relu_derivative}},
     {ActivationType::TANH, {tanh_activation, tanh_derivative}},
@@ -83,11 +70,11 @@ inline double mse(const Matrix& target, const Matrix& prediction) {
 }
 
 inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
-    return (prediction - target);
+    return 2 * (prediction - target);
 }
 
 inline double cce(const Matrix& target, const Matrix& prediction) {
-    double epsilon = 1e-8;
+    double epsilon = 1e-8; // Small value to prevent log(0)
     Matrix pred_clipped = prediction.cwiseMax(epsilon).cwiseMin(1.0 - epsilon);
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
@@ -96,11 +83,11 @@ inline Matrix cce_derivative(const Matrix& target, const Matrix& prediction) {
     return (prediction - target);
 }
 
-const std::map<LossType, std::pair<std::function<double(const Matrix&, const Matrix&)>, std::function<Matrix(const Matrix&, const Matrix&)>>> loss_map = {
+const std::map<LossType, std::pair<LossFunction, LossDerivative>> loss_map = {
     {LossType::MSE, {mse, mse_derivative}},
     {LossType::CCE, {cce, cce_derivative}}};
 
-// Final Metrics Functions
+// Metrics Functions
 
 inline double classification_accuracy(const Matrix& target, const Matrix& prediction) {
     int correct_predictions = 0;
@@ -133,72 +120,94 @@ inline double classification_accuracy(const Matrix& target, const Matrix& predic
     return static_cast<Scalar>(correct_predictions) / num_samples;
 }
 
-struct ConfidenceResult {
-    Scalar mean;
-    Scalar variance;
-};
-
-// Calculate the classification confidence as a percentage with mean and variance
-inline ConfidenceResult classification_confidence(const Matrix& target, const Matrix& prediction) {
-    int num_samples = target.cols();
-    std::vector<Scalar> confidences;
-    confidences.reserve(num_samples); // Reserve space for efficiency
-
-    if (target.rows() == 1) { // Binary classification
-        for (int i = 0; i < num_samples; ++i) {
-            Scalar target_val = target(0, i);                                       // Get the target class
-            Scalar pred_val = prediction(0, i);                                     // Get the predicted probability for the positive class
-            confidences.push_back(target_val == 1.0 ? pred_val : (1.0 - pred_val)); // Store the predicted probability for the target class
-        }
-    } else { // Multi-class classification
-        for (int i = 0; i < num_samples; ++i) {
-            int target_class, predicted_class;
-            target.col(i).maxCoeff(&target_class);              // Get the index of the maximum value in the target column (target class)
-            prediction.col(i).maxCoeff(&predicted_class);       // Get the index of the maximum value in the prediction column (predicted class)
-            confidences.push_back(prediction(target_class, i)); // Store the predicted probability for the target class
-        }
-    }
-
-    // Calculate mean and variance of the confidences
-    Scalar mean_confidence = std::accumulate(confidences.begin(), confidences.end(), 0.0) / num_samples;
-    Scalar variance = std::accumulate(confidences.begin(), confidences.end(), 0.0, [&](Scalar sum, Scalar val) {
-                          return sum + (val - mean_confidence) * (val - mean_confidence);
-                      }) /
-                      num_samples;
-
-    return {mean_confidence, variance};
-}
-
 struct MetricsResult {
-    Scalar accuracy = 0.0;
-    Scalar confidence_mean = 0.0;
-    Scalar confidence_variance = 0.0;
-    Scalar mean_squared_error = 0.0;
+    std::vector<Scalar> loss;
+    std::vector<Scalar> accuracy;
+    std::vector<int> occurrences;
 
     void print(bool is_regression) const {
-        if (is_regression) {
-            std::println(" • Mean Squared Error: {:.3f}", mean_squared_error);
-            return;
+        if (!is_regression) {
+            std::println(" • Accuracy:   {:.2f}%", std::accumulate(accuracy.begin(), accuracy.end(), 0.0) / accuracy.size() * 100.0);
         }
-        std::println(" • Accuracy:   {:.2f}%", accuracy * 100.0);
-        std::println(" • Confidence: {:.3f}±{:.3f}", confidence_mean, std::sqrt(confidence_variance));
+        std::println(" • Loss: {:.3f}", std::accumulate(loss.begin(), loss.end(), 0.0) / loss.size());
     }
 
-    void update(const Matrix& target, const Matrix& prediction, bool is_regression) {
-        if (is_regression) {
-            mean_squared_error += mse(target, prediction);
-            return;
-        }
-        accuracy += classification_accuracy(target, prediction);
-        ConfidenceResult train_conf = classification_confidence(target, prediction);
-        confidence_mean += train_conf.mean;
-        confidence_variance += train_conf.variance;
+    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
+        loss.push_back(loss_func(target, prediction));
+        accuracy.push_back(classification_accuracy(target, prediction));
+        occurrences.push_back(1);
     }
 
-    void average(int num_folds) {
-        accuracy /= num_folds;
-        confidence_mean /= num_folds;
-        confidence_variance /= num_folds;
-        mean_squared_error /= num_folds;
+    void add(const MetricsResult& other) {
+        loss.insert(loss.end(), other.loss.begin(), other.loss.end());
+        accuracy.insert(accuracy.end(), other.accuracy.begin(), other.accuracy.end());
+        occurrences.insert(occurrences.end(), other.occurrences.begin(), other.occurrences.end());
+    }
+
+    void merge(const MetricsResult& other) {
+        for (size_t i = 0; i < other.loss.size(); ++i) {
+            if (i < loss.size()) {
+                loss[i] += other.loss[i];
+                accuracy[i] += other.accuracy[i];
+                occurrences[i] += other.occurrences[i];
+            } else {
+                loss.push_back(other.loss[i]);
+                accuracy.push_back(other.accuracy[i]);
+                occurrences.push_back(other.occurrences[i]);
+            }
+        }
+    }
+
+    void merge(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
+        Scalar batch_loss = loss_func(target, prediction);
+        Scalar batch_accuracy = classification_accuracy(target, prediction);
+
+        if (loss.empty()) {
+            add(target, prediction, loss_func);
+            return;
+        }
+
+        loss.back() += batch_loss;
+        accuracy.back() += batch_accuracy;
+        occurrences.back() += 1;
+    }
+
+    void average() {
+        for (size_t i = 0; i < loss.size(); ++i) {
+            loss[i] /= occurrences[i];
+            accuracy[i] /= occurrences[i];
+            occurrences[i] = 1;
+        }
+    }
+};
+
+struct SplitResults {
+    MetricsResult train_metrics;
+    MetricsResult test_metrics;
+
+    void merge(const SplitResults& other) {
+        train_metrics.merge(other.train_metrics);
+        test_metrics.merge(other.test_metrics);
+    }
+
+    void average() {
+        train_metrics.average();
+        test_metrics.average();
+    }
+
+    bool operator>(const SplitResults& other) const {
+        if (other.test_metrics.loss.empty()) {
+            return true;
+        }
+
+        auto this_min = std::min_element(test_metrics.loss.begin(), test_metrics.loss.end());
+        auto other_min = std::min_element(other.test_metrics.loss.begin(), other.test_metrics.loss.end());
+
+        return *this_min <= *other_min;
+    }
+
+    int get_best_index() const {
+        auto min_it = std::min_element(test_metrics.loss.begin(), test_metrics.loss.end());
+        return std::distance(test_metrics.loss.begin(), min_it);
     }
 };
