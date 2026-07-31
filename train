@@ -39,7 +39,7 @@ echo "[2] Live Plot"
 echo "[3] Best Model"
 echo "[4] Kill Process"
 
-booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --train \
+booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --train --shuffle \
     --params $GRID_FILE \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K --epochs $EPOCHS &

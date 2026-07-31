@@ -1,33 +1,36 @@
 # Neural Network
 
-A C++ neural network built using **Eigen3** for vectorized linear algebra. Designed for modularity and easy experimentation.
-
+A Neural Network Framework built in C++ using **Eigen3**. Project designed to be modular and easy to experiment and learn with.
 
 ## Features
 
-* **Flexible Architecture**: Network structure and hyperparameters are fully configurable via a Grid Search CSV file.
-* **Rigorous Evaluation**: Nested K-Fold Cross-Validation for model selection and performance estimation. 
-* **Model Selection**: Automatically prioritizes models based on maximum Validation Accuracy, using minimum Validation Loss.
-* **Activations Supported**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
-* **Loss Functions**: `MSE` (Mean Squared Error) and `CCE` (Categorical Cross-Entropy) with automatic selection based on output activation.
+* **Dynamic Architecture**: Network structure and hyperparameters configurable via a Grid Search CSV file.
+* **Model Selection**: Nested K-Fold Cross-Validation or Holdout to select the best model based on Loss.
+* **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
+* **Loss Functions**: `MSE` (Mean Squared Error) and `CCE` (Categorical Cross-Entropy) automatically selected based on output activation.
 * **Architecture Features**:
     * `L2 Weight Decay` ($\lambda$) and `Momentum` ($\alpha$).
-    * `Mini-batch` and `Stochastic Gradient Descent`.
+    * `Batch`, `Mini-batch` and `Stochastic` update.
+    * `Gradient Descent` optimizer.
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
 * **Datasets Supported**: `XOR`, `XOR_HOT`, and `MNIST`.
-* **Logging & Visualization**: CSV logging per-fold and live plotting of Loss/Accuracy curves using `live_plot.py`.
+* **Logging & Visualization**: 
+    * `CSV` logging of per-fold loss and accuracy.
+    * `live_plot.py` script to visualize Loss and Accuracy curves.
+    * `best_model.py` script to visualize the results of the best model of each fold.
 
 ## Prerequisites & Dependencies
 
-* **C++ Compiler**: GCC or Clang supporting **C++20/23** (requires `<print>`, `std::format`, `std::ranges`).
+* **C++ Compiler**: GCC or Clang supporting **C++20/23**.
 * **CMake**: Version 3.14 or higher.
 * **Eigen3**: Installed on your system.
 * **CLI11**: Fetched automatically via CMake.
+* **BLAS**: Installed on your system [can be disabled via CMake]
 
 ## Building the Project
 
 ### Release Build
-To enable SIMD vectorization (`-O3 -march=native`), build using the Release configuration:
+For optimal performance, build using the Release configuration:
 
 ```bash
 mkdir -p build/Release
@@ -41,9 +44,9 @@ Network parameters are defined in a CSV file passed to the `--params` argument.
 
 **Format (`artifacts/grid.csv`):**
 ```csv
-id,net_struct,hidden,output,init,batch,eta,lambda,alpha
-0,128-64,relu,softmax,he,32,0.01,0.001,0.9
-1,64,sigmoid,sigmoid,glorot,16,0.1,1e-4,0.0
+id,net,hidden,output,init,opt,batch,eta,lambda,alpha
+0,128-64,relu,softmax,he,sgd,32,0.01,0.001,0.9
+1,64,sigmoid,sigmoid,glorot,sgd,16,0.1,1e-4,0.0
 ```
 
 ## CLI Options
@@ -65,6 +68,16 @@ id,net_struct,hidden,output,init,batch,eta,lambda,alpha
 
 ## Quickstart Examples
 
+### Use provided `train` and `test` scripts for enhanced features
+```bash
+# Train the models of <grid_file> on <dataset>. 
+./train <dataset> <name> <grid_file>
+
+# Test the best models <name> on <dataset>. 
+./test <dataset> <name>
+```
+This provides a menu for triggering early stopping, quitting or visualizing plots. The `name` and `grid_file` arguments are optional. More configurations available in the bash script.
+
 ### 1. Training with Nested Cross-Validation on MNIST
 Run a 2x2 nested K-fold cross-validation on 40% of the MNIST dataset, evaluating the models defined in `grid.csv`, and dumping the final weights:
 
@@ -73,7 +86,7 @@ Run a 2x2 nested K-fold cross-validation on 40% of the MNIST dataset, evaluating
     --name mnist_test \
     --train \
     --dump \
-    --params artifacts/grid.csv \
+    --params dataset/mnist/grid.csv \
     --dataset_ratio 0.4 \
     --inner-k 2 \
     --outer-k 2 \
@@ -87,20 +100,23 @@ To load previously dumped models from the `artifacts/mnist_test` directory and r
 ```bash
 ./build/Release/NeuralNet mnist \
     --name mnist_test \
-    --params artifacts/grid.csv \
     --dataset_ratio 0.4
 ``` 
-*(Note: Omitting `--train` automatically triggers inference mode on `.bin` files found in the target directory)*.
+*(Note: Omitting `--train` triggers inference mode on `.bin` files found in the target directory)*.
 
 ## Logging & Output
 
-During training, metrics are continuously aggregated to CSV files in artifact directory (`artifacts/<name>/`). The files follow a naming convention to separate inner-fold validations from outer-fold evaluations:
+During training, metrics are logged to CSV files in artifact directory (`artifacts/<name>/`). The files follow a naming convention to separate inner-fold validations from outer-fold evaluations:
 
 * **Inner Folds:** `outer<N>_inner_m<ID>.csv` (e.g., `outer0_inner_m0.csv`)
-* **Outer Folds (Best Models):** `outer<N>_m<ID>.csv`
+* **Outer Folds:** `outer<N>_m<ID>.csv` (e.g., `outer1_m1.csv`) (Best Models)
 
-**Live Visualization:**
+**Visualization:**
 Monitor training in real-time by targeting the artifact directory with the plotting script:
 ```bash
 python live_plot.py mnist_test
+```
+Or visualize the performance of the best models found by the model selection foreach outer fold computed
+```bash
+python best_model.py mnist_test
 ```
