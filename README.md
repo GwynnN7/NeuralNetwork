@@ -1,11 +1,11 @@
 # Neural Network
 
-A Neural Network Framework built in C++ using **Eigen3**. Project designed to be modular and easy to experiment and learn with.
+A Neural Network Framework built in **C++** using **Eigen3**. Project designed to be modular and easy to experiment and learn with.
 
 ## Features
 
-* **Dynamic Architecture**: Network structure and hyperparameters configurable via a Grid Search CSV file.
-* **Model Selection**: Nested K-Fold Cross-Validation or Holdout to select the best model based on Loss.
+* **Dynamic Architecture**: Network structure and hyperparameters configurable via a `Grid Search` CSV file.
+* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout` to select the best model based on Loss.
 * **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
 * **Loss Functions**: `MSE` (Mean Squared Error) and `CCE` (Categorical Cross-Entropy) automatically selected based on output activation.
 * **Architecture Features**:
@@ -18,6 +18,49 @@ A Neural Network Framework built in C++ using **Eigen3**. Project designed to be
     * `CSV` logging of per-fold loss and accuracy.
     * `live_plot.py` script to visualize Loss and Accuracy curves.
     * `best_model.py` script to visualize the results of the best model of each fold.
+
+## Configuration
+
+Network parameters are defined in a CSV file passed to the `--params` argument. 
+
+**Format (`dataset/<dataset>/grid.csv`):**
+
+| Item | Description | Options |
+| :--- | :--- | :--- |
+| `id` | Identifier of the parameters combination | `int` |
+| `net` | Structure of the network (`layers` & `neurons`) | `{i}-{i}-{i}` |
+| `hidden` | Activation function of the `hidden` layers | `ReLU`, `Sigmoid`, `Tanh` |
+| `output` | Activation function of the `output` layer  | `Sigmoid`, `Softmax`, `Linear` |
+| `init` | Initialization method of the weights| `Random`, `Lecun`, `Glorot`, `He` |
+| `opt` | Optimization method for the weights | `SGD` |
+| `batch` | Batch size (use 0 for a single batch) | `int` |
+| `eta` | Learning rate of the network | `double` |
+| `lambda`| Regularization hyperparameter | `double` |
+| `alpha`| Momentum hyperparameter | `double` |
+
+```csv
+id,net,hidden,output,init,opt,batch,eta,lambda,alpha
+0,128-64,relu,softmax,he,sgd,32,0.01,0.001,0.9
+1,64,sigmoid,sigmoid,glorot,sgd,16,0.1,1e-4,0.0
+```
+
+
+## CLI Options
+
+| Argument | Description | Default |
+| :--- | :--- | :--- |
+| `dataset` | Dataset type: `xor`, `xor_hot`, `mnist` | *Required* |
+| `--params` | Path to CSV file containing model configurations for grid search | `dataset/grid.csv` |
+| `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
+| `--train` | Flag to execute the training & cross-validation loop | `false` |
+| `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
+| `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
+| `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
+| `--epochs` | Maximum number of training epochs per fold | `500` |
+| `--train_ratio`| Training set split ratio (when $K=1$) | `0.85` |
+| `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
+| `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |
+| `--seed` | Random seed for reproducibility | `42` |
 
 ## Prerequisites & Dependencies
 
@@ -37,34 +80,6 @@ mkdir -p build/Release
 cmake -B build/Release -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release -j4
 ```
-
-## Configuration: Grid Search CSV
-
-Network parameters are defined in a CSV file passed to the `--params` argument. 
-
-**Format (`artifacts/grid.csv`):**
-```csv
-id,net,hidden,output,init,opt,batch,eta,lambda,alpha
-0,128-64,relu,softmax,he,sgd,32,0.01,0.001,0.9
-1,64,sigmoid,sigmoid,glorot,sgd,16,0.1,1e-4,0.0
-```
-
-## CLI Options
-
-| Argument | Description | Default |
-| :--- | :--- | :--- |
-| `dataset` | Dataset type: `xor`, `xor_hot`, `mnist` | *Required* |
-| `--params` | Path to CSV file containing model configurations for grid search | `dataset/grid.csv` |
-| `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
-| `--train` | Flag to execute the training & cross-validation loop | `false` |
-| `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
-| `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
-| `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
-| `--epochs` | Maximum number of training epochs per fold | `500` |
-| `--train_ratio`| Training set split ratio (when $K=1$) | `0.85` |
-| `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
-| `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |
-| `--seed` | Random seed for reproducibility | `42` |
 
 ## Quickstart Examples
 
