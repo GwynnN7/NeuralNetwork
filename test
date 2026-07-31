@@ -13,7 +13,7 @@ fi
 
 NAME="$1"
 if [ -n "$2" ]; then
-    NAME="$1"_"$2"
+    NAME="$2"
 fi
 
 booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME"

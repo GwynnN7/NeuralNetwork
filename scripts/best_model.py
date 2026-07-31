@@ -5,12 +5,13 @@ import glob
 import re
 import matplotlib.pyplot as plt
 
-folder_path = f"artifacts/{sys.argv[1]}" if len(sys.argv) > 1 else "artifacts/model"
-potential_files = glob.glob(os.path.join(folder_path, "outer*_m*.csv"))
+model_name = sys.argv[1] if len(sys.argv) > 1 else "model"
+folder_path = f"artifacts/{model_name}"
+files = glob.glob(os.path.join(folder_path, "outer*_m*.csv"))
 
 outer_files = [
-    f for f in potential_files 
-    if re.match(r'^outer\d+_m\d+\.csv$', os.path.basename(f))
+    f for f in files 
+    if re.match(r'^outer(\d+)_m(\d+)\.csv$', os.path.basename(f))
 ]
 
 if not outer_files:
@@ -22,7 +23,7 @@ results = []
 for file in outer_files:
     basename = os.path.basename(file)
 
-    match = re.search(r'outer(\d+)_m(\d+)\.csv', basename)
+    match = re.search(r'^outer(\d+)_m(\d+)\.csv$', basename)
 
     outer_idx = int(match.group(1))
     model_idx = int(match.group(2))
@@ -66,22 +67,18 @@ for bar, model_id, acc in zip(bars, results_df['Model ID'], results_df['Test Acc
         fontsize=10
     )
 
-if len(results_df) > 1:
-    grand_average = results_df['Test Acc'].mean()
-    plt.axhline(
-        grand_average, 
-        color='#C44E52', 
-        linestyle='--', 
-        linewidth=2.5, 
-        label=f'Average: {grand_average:.2f}%'
-    )
-    title_prefix = "K-Fold / Nested CV"
-else:
-    title_prefix = "Holdout Split"
+grand_average = results_df['Test Acc'].mean()
+plt.axhline(
+    grand_average, 
+    color='#C44E52', 
+    linestyle='--', 
+    linewidth=2.5, 
+    label=f'Average: {grand_average:.2f}%'
+)
 
 plt.ylim(0, 115)
 plt.ylabel("Test Accuracy (%)", fontsize=12)
-plt.title(f"{title_prefix} Performance ({len(results_df)} Folds)", fontsize=14, fontweight='bold')
+plt.title(f"{model_name.upper()} Performance", fontsize=14, fontweight='bold')
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 
 if len(results_df) > 1:

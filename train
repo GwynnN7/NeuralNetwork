@@ -25,7 +25,7 @@ TRAIN_RATIO=0.8
 
 NAME="$1"
 if [ -n "$2" ]; then
-    NAME="$1"_"$2"
+    NAME="$2"
 fi
 
 GRID_FILE="dataset/$1/grid.csv"
@@ -34,8 +34,10 @@ if [ -n "$3" ]; then
 fi
 
 clear
-echo "[1] Kill Process (SIGINT)"
-echo "[2] Early Stop   (SIGUSR)"
+echo "[1] Early Stop"
+echo "[2] Live Plot"
+echo "[3] Best Model"
+echo "[4] Kill Process"
 
 booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --train \
     --params $GRID_FILE \
@@ -50,12 +52,18 @@ while true; do
         fi
 
         if [[ $key == "1" ]]; then
-            kill -SIGINT "$PID"
-        elif [[ $key == "2" ]]; then
             kill -SIGUSR1 "$PID"
+        elif [[ $key == "2" ]]; then
+            python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &
+        elif [[ $key == "3" ]]; then
+            python3 ./scripts/best_model.py "$NAME" >/dev/null 2>&1 &
+        elif [[ $key == "4" ]]; then
+            kill -SIGINT "$PID"
         fi
     fi
     if ! pgrep "NeuralNet" > /dev/null; then
         break
     fi
 done
+
+nohup python3 ./scripts/best_model.py "$NAME" >/dev/null 2>&1 &

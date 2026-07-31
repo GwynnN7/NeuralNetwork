@@ -245,7 +245,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         }
 
         if (early_stop_flag) {
-            std::println(stderr, "\n[Manual stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+            std::println("\n[Manual stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
             break;
         }
 
