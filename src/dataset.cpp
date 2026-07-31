@@ -8,39 +8,7 @@
 #include <iostream>
 #include <vector>
 
-Matrix load_csv(const std::string& filename) {
-    std::ifstream file(filename);
-    std::string line, cell;
-    std::vector<Scalar> values;
-    int rows = 0;
-    int cols = 0;
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file: " + filename);
-    }
-
-    while (std::getline(file, line)) {
-        std::stringstream lineStream(line);
-        int current_cols = 0;
-        while (std::getline(lineStream, cell, ',')) {
-            try {
-
-                values.push_back(static_cast<Scalar>(std::stod(cell)));
-            } catch (const std::invalid_argument& e) {
-                throw std::runtime_error("Invalid number in dataset: " + cell);
-            }
-            current_cols++;
-        }
-        if (cols == 0) {
-            cols = current_cols;
-        } else if (cols != current_cols) {
-            throw std::runtime_error("Inconsistent number of columns in dataset.");
-        }
-        rows++;
-    }
-    file.close();
-    return Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(values.data(), rows, cols);
-}
-
+namespace Loader {
 Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -99,7 +67,82 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     return one_hot_labels;
 }
 
-std::vector<DataSplit> split_dataset(int num_samples, int k, Scalar train_ratio, bool shuffle) {
+Matrix load_csv(const std::string& filename) {
+    std::ifstream file(filename);
+    std::string line, cell;
+    std::vector<Scalar> values;
+    int rows = 0;
+    int cols = 0;
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file: " + filename);
+    }
+
+    while (std::getline(file, line)) {
+        std::stringstream lineStream(line);
+        int current_cols = 0;
+        while (std::getline(lineStream, cell, ',')) {
+            try {
+
+                values.push_back(static_cast<Scalar>(std::stod(cell)));
+            } catch (const std::invalid_argument& e) {
+                throw std::runtime_error("Invalid number in dataset: " + cell);
+            }
+            current_cols++;
+        }
+        if (cols == 0) {
+            cols = current_cols;
+        } else if (cols != current_cols) {
+            throw std::runtime_error("Inconsistent number of columns in dataset.");
+        }
+        rows++;
+    }
+    file.close();
+    return Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(values.data(), rows, cols);
+}
+} // namespace Loader
+
+Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
+    switch (dataset_type) {
+    case DatasetType::XOR: {
+        Matrix xor_data = Loader::load_csv("dataset/xor/xor.csv").transpose();
+
+        Matrix features = xor_data.topRows(xor_data.rows() - 1);
+        Matrix labels = xor_data.bottomRows(1);
+
+        Dataset dataset{DatasetType::XOR, features.replicate(1, 100), labels.replicate(1, 100)};
+        return dataset;
+    };
+    case DatasetType::XOR_HOT: {
+        Matrix xor_hot_data = Loader::load_csv("dataset/xor_hot/xor_hot.csv").transpose();
+
+        Matrix features = xor_hot_data.topRows(xor_hot_data.rows() - 2);
+        Matrix labels = xor_hot_data.bottomRows(2);
+
+        Dataset dataset{DatasetType::XOR_HOT, features.replicate(1, 100), labels.replicate(1, 100)};
+        return dataset;
+    };
+    case DatasetType::MNIST: {
+        Matrix train_features = Loader::load_mnist_images("dataset/mnist/train-images-idx3-ubyte", dataset_ratio).transpose();
+        Matrix train_labels = Loader::load_mnist_labels("dataset/mnist/train-labels-idx1-ubyte", dataset_ratio).transpose();
+        Matrix test_features = Loader::load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
+        Matrix test_labels = Loader::load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
+
+        Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
+        Matrix all_labels(train_labels.rows(), train_labels.cols() + test_labels.cols());
+
+        // Unify datasets to use my k-fold cross-validation function (use --innerk 0 and default args to use the original train/test split)
+        all_features << train_features, test_features;
+        all_labels << train_labels, test_labels;
+
+        return Dataset{DatasetType::MNIST, all_features, all_labels};
+    };
+    default: {
+        throw std::invalid_argument("Unsupported dataset type");
+    }
+    }
+}
+
+std::vector<DataSplit> DataSplit::split(int num_samples, int k, Scalar train_ratio, bool shuffle) {
     if (k == 0) {
         return std::vector<DataSplit>();
     }
@@ -140,45 +183,4 @@ std::vector<DataSplit> split_dataset(int num_samples, int k, Scalar train_ratio,
     }
 
     return folds;
-}
-
-Dataset load_dataset(DatasetType dataset_type, Scalar dataset_ratio) {
-    switch (dataset_type) {
-    case DatasetType::XOR: {
-        Matrix xor_data = load_csv("dataset/xor/xor.csv").transpose();
-
-        Matrix features = xor_data.topRows(xor_data.rows() - 1);
-        Matrix labels = xor_data.bottomRows(1);
-
-        Dataset dataset{DatasetType::XOR, features, labels};
-        return dataset;
-    };
-    case DatasetType::XOR_HOT: {
-        Matrix xor_hot_data = load_csv("dataset/xor/xor_hot.csv").transpose();
-
-        Matrix features = xor_hot_data.topRows(xor_hot_data.rows() - 2);
-        Matrix labels = xor_hot_data.bottomRows(2);
-
-        Dataset dataset{DatasetType::XOR_HOT, features, labels};
-        return dataset;
-    };
-    case DatasetType::MNIST: {
-        Matrix train_features = load_mnist_images("dataset/mnist/train-images-idx3-ubyte", dataset_ratio).transpose();
-        Matrix train_labels = load_mnist_labels("dataset/mnist/train-labels-idx1-ubyte", dataset_ratio).transpose();
-        Matrix test_features = load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
-        Matrix test_labels = load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
-
-        Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
-        Matrix all_labels(train_labels.rows(), train_labels.cols() + test_labels.cols());
-
-        // Unify datasets to use my k-fold cross-validation function (use --innerk 0 and default args to use the original train/test split)
-        all_features << train_features, test_features;
-        all_labels << train_labels, test_labels;
-
-        return Dataset{DatasetType::MNIST, all_features, all_labels};
-    };
-    default: {
-        throw std::invalid_argument("Unsupported dataset type");
-    }
-    }
 }

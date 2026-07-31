@@ -1,19 +1,18 @@
 #pragma once
 
-#include "network.hpp"
 #include "types.hpp"
 
+#include <algorithm>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
-#include <map>
 #include <print>
 #include <random>
 
 inline std::string MODEL_PATH;
 
 inline volatile std::sig_atomic_t early_stop_flag = 0;
-inline void handle_sigint(int sig) {
+inline void handle_signal(int sig) {
     if (early_stop_flag) {
         std::exit(sig);
     }
@@ -28,18 +27,6 @@ inline std::mt19937& get_random_generator() {
 
 inline void set_random_seed(unsigned int seed) {
     get_random_generator().seed(seed);
-}
-
-inline void print_model(const Model& model) {
-    std::println("\nTraining Configuration:");
-
-    std::println(" • {:<25}{}", "Batch Size:", model.batch_size);
-    std::println(" • {:<25}{}", "Learning Rate:", model.eta);
-    std::println(" • {:<25}{}", "Regularization:", model.lambda);
-    std::println(" • {:<25}{}", "Momentum:", model.alpha);
-    std::println(" • {:<25}{}", "Hidden Activation:", activation_to_str.at(model.hidden_activation));
-    std::println(" • {:<25}{}", "Output Activation:", activation_to_str.at(model.output_activation));
-    std::println(" • {:<25}{}", "Weight Init:", init_to_str.at(model.init_type));
 }
 
 inline void print_random_samples(Matrix& target, Matrix& predictions) {

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+RELEASE_DIR="build/Release"
+
+mkdir -p $RELEASE_DIR
+cmake -B $RELEASE_DIR -DCMAKE_BUILD_TYPE=Release
+cmake --build $RELEASE_DIR -j 6 || { echo -e "\n[Error] Build failed"; exit 1; }
+
+if [ ! -n "$1" ]; then
+    echo "Usage: $0 <dataset_name> [model_name]"
+    exit 1
+fi
+
+NAME="$1"
+if [ -n "$2" ]; then
+    NAME="$1"_"$2"
+fi
+
+booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME"

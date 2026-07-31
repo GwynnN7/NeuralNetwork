@@ -18,7 +18,7 @@
 // -- DenseLayer class implementation --
 
 // DenseLayer constructor that initializes weights based on the specified initialization type
-DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type) {
+DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type) {
     // Determine the distribution value based on the initialization type
     Scalar distribution_value;
     switch (init_type) {
@@ -50,8 +50,9 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type) {
     } break;
     }
 
+    setOptimizer(opt_type);
+
     b = Vector::Zero(output_size);
-    delta_W = Matrix::Zero(output_size, input_size);
 }
 
 // Forward pass through the DenseLayer, saving input and output for backpropagation
@@ -72,11 +73,7 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model) {
     Vector bias_delta = output_gradient.rowwise().sum() / X.cols();      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
     Matrix input_gradient = W.transpose() * output_gradient;             // Calculate the neuron gradient to propagate to the previous layer
 
-    delta_W = -model.eta * weights_delta + model.alpha * delta_W; // Update delta_W with learning rate and momentum
-    Matrix l2_penalty = model.eta * model.lambda * W;             // L2 regularization term
-
-    W = W + delta_W - l2_penalty; // Update weights with L2 regularization and momentum
-    b -= model.eta * bias_delta;  // Update biases with learning rate
+    optimizer->update(W, b, weights_delta, bias_delta, model); // Update weights and biases using the optimizer
 
     return input_gradient;
 }
@@ -86,8 +83,8 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model) {
 // ActivationLayer constructor that initializes the activation function and its derivative based on the specified ActivationType
 ActivationLayer::ActivationLayer(ActivationType activationType) {
     try {
-        activation = activation_map.at(activationType).first;
-        activation_derivative = activation_map.at(activationType).second;
+        activation = Maps::activation_map.at(activationType).first;
+        activation_derivative = Maps::activation_map.at(activationType).second;
     } catch (const std::out_of_range&) {
         throw std::invalid_argument("Unsupported activation function type");
     }
@@ -127,28 +124,28 @@ Network::Network(const Model& model, const int num_features, const int num_class
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
         int input_features = i == 0 ? num_features : model.net_struct[i - 1];
         int num_neurons = model.net_struct[i];
-        addLayer(std::make_unique<DenseLayer>(input_features, num_neurons, model.init_type));
+        addLayer(std::make_unique<DenseLayer>(input_features, num_neurons, model.init_type, model.opt_type));
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
     }
-    addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type));
+    addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
 }
 
 // Network constructor that initializes pairs or DenseLayer and ActivationLayer with loaded weights and biases
 Network::Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases) : Network(model) {
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
-        addLayer(std::make_unique<DenseLayer>(weights[i], biases[i]));
+        addLayer(std::make_unique<DenseLayer>(weights[i], biases[i], model.opt_type));
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
     }
-    addLayer(std::make_unique<DenseLayer>(weights.back(), biases.back()));
+    addLayer(std::make_unique<DenseLayer>(weights.back(), biases.back(), model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
 }
 
 // Utility function to set the loss function and its derivative based on the specified LossType
 void Network::setLossFunction(LossType lossType) {
     try {
-        loss_func = loss_map.at(lossType).first;
-        loss_derivative = loss_map.at(lossType).second;
+        loss_func = Maps::loss_map.at(lossType).first;
+        loss_derivative = Maps::loss_map.at(lossType).second;
     } catch (const std::out_of_range&) {
         throw std::invalid_argument("Unsupported loss function type");
     }
@@ -176,7 +173,7 @@ Matrix Network::predict(const Matrix& out, bool training) {
     Matrix new_out = out;
     for (auto& layer : layers) {
         new_out = layer->forward(new_out, training); // Forward pass through each layer
-        weights_norm += layer->weightNorm();         // Accumulate the squared norm of weights for L2 regularization loss (not really used)
+        weights_norm += layer->getWeightNorm();      // Accumulate the squared norm of weights for L2 regularization loss (not really used)
     }
     return new_out;
 }
@@ -184,7 +181,7 @@ Matrix Network::predict(const Matrix& out, bool training) {
 // Train the network using the dataset provided by the model_set
 SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, int epochs, int model_index, int outer_index, int inner_index, bool logging) {
     if (outer_index == 0 && inner_index == 0) {
-        print_model(model);
+        model.print();
     }
 
     // File logging handling
@@ -219,7 +216,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
 
     // Local copy of the training indices to shuffle for each epoch
     std::vector<int> epoch_indices = indices.train_indices;
-    for (int i = 0; i < epochs && !early_stop_flag; i++) {
+    for (int i = 0; i < epochs; i++) {
         // Shuffle the training data indices for current epoch
         std::ranges::shuffle(epoch_indices, get_random_generator());
 
@@ -278,73 +275,4 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         log_file.close();
     }
     return split_results;
-}
-
-std::vector<Model> load_grid_search(const std::string& filename) {
-    std::vector<Model> grid_search;
-    std::ifstream file(filename);
-
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open grid search file: " + filename);
-    }
-
-    auto to_lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
-        return s;
-    };
-
-    std::string line;
-    bool is_first_line = true;
-
-    while (std::getline(file, line)) {
-        if (line.empty() || line.find_first_not_of(" \t\r") == std::string::npos) {
-            continue;
-        }
-
-        if (is_first_line) {
-            is_first_line = false;
-            if (!std::isdigit(line[0]))
-                continue;
-        }
-
-        std::vector<std::string> row;
-        std::stringstream ss(line);
-        std::string cell;
-
-        while (std::getline(ss, cell, ',')) {
-            row.push_back(cell);
-        }
-
-        if (row.size() != 9) {
-            throw std::runtime_error("Invalid row in CSV. Expected 9 columns, found " + std::to_string(row.size()));
-        }
-
-        Model model;
-        model.id = std::stoi(row[0]);
-
-        std::string num;
-        std::stringstream struct_ss(row[1]);
-        while (std::getline(struct_ss, num, '-')) {
-            if (!num.empty())
-                model.net_struct.push_back(std::stoi(num));
-        }
-
-        try {
-            model.hidden_activation = str_to_activation.at(to_lower(row[2]));
-            model.output_activation = str_to_activation.at(to_lower(row[3]));
-            model.init_type = str_to_init.at(to_lower(row[4]));
-        } catch (const std::out_of_range&) {
-            throw std::runtime_error("Invalid activation or init type in CSV row " + std::to_string(model.id));
-        }
-
-        model.batch_size = std::stoi(row[5]);
-        model.eta = static_cast<Scalar>(std::stod(row[6]));
-        model.lambda = static_cast<Scalar>(std::stod(row[7]));
-        model.alpha = static_cast<Scalar>(std::stod(row[8]));
-
-        grid_search.push_back(model);
-    }
-
-    file.close();
-    return grid_search;
 }

@@ -1,10 +1,7 @@
 #pragma once
 
-#include "types.hpp"
-
 #include <Eigen/Dense>
 #include <map>
-#include <string>
 
 using Scalar = float;
 typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> Matrix;
@@ -22,6 +19,10 @@ enum class ActivationType {
     SOFTMAX
 };
 
+enum class OptimizerType {
+    SGD,
+};
+
 enum class LossType { MSE,
                       CCE };
 
@@ -37,6 +38,7 @@ enum class DatasetType { XOR,
                          XOR_HOT,
                          MNIST };
 
+namespace Maps {
 const std::map<ActivationType, std::string> activation_to_str = {
     {ActivationType::RELU, "ReLU"},
     {ActivationType::SIGMOID, "Sigmoid"},
@@ -62,6 +64,10 @@ const std::map<InitType, std::string> init_to_str = {
     {InitType::HE, "He"},
 };
 
+const std::map<OptimizerType, std::string> optimizer_to_str = {
+    {OptimizerType::SGD, "SGD"},
+};
+
 const std::map<DatasetType, std::string> dataset_to_str = {
     {DatasetType::XOR, "XOR"},
     {DatasetType::XOR_HOT, "XOR_HOT"},
@@ -80,3 +86,7 @@ const std::map<std::string, InitType> str_to_init{
     {"lecun", InitType::LECUN},
     {"glorot", InitType::GLOROT},
     {"he", InitType::HE}};
+
+const std::map<std::string, OptimizerType> str_to_optimizer{
+    {"sgd", OptimizerType::SGD}};
+} // namespace Maps

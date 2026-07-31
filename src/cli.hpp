@@ -19,6 +19,6 @@ struct Args {
 
     bool dump = false;
     bool train = false;
-};
 
-Args parse_args(int argc, char* argv[]);
+    static Args parse(int argc, char* argv[]);
+};

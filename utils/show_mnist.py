@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 def show_mnist_image(file_path, index):
     try:
         with open(file_path, 'rb') as f:
-
             magic, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
 
             if index < 0 or index >= num_images:
@@ -36,8 +35,8 @@ if __name__ == "__main__":
     try:
         target_index = int(sys.argv[1])
     except ValueError:
-        print("Error: Please provide a valid integer index.")
+        print("Error: not valid integer index")
         sys.exit(1)
 
-    dataset_path = "t10k-images-idx3-ubyte"
+    dataset_path = "dataset/mnist/t10k-images-idx3-ubyte"
     show_mnist_image(dataset_path, target_index)

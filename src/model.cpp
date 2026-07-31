@@ -1,16 +1,105 @@
-#include "dump.hpp"
+#include "model.hpp"
+
+#include "network.hpp"
+#include "types.hpp"
 
 #include <fstream>
+#include <map>
+#include <print>
+#include <string>
+#include <vector>
+
+std::vector<Model> Model::load_grid_search(const std::string& filename) {
+    std::vector<Model> grid_search;
+    std::ifstream file(filename);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open grid search file: " + filename);
+    }
+
+    auto to_lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+        return s;
+    };
+
+    std::string line;
+    bool is_first_line = true;
+
+    while (std::getline(file, line)) {
+        if (line.empty() || line.find_first_not_of(" \t\r") == std::string::npos) {
+            continue;
+        }
+
+        if (is_first_line) {
+            is_first_line = false;
+            if (!std::isdigit(line[0]))
+                continue;
+        }
+
+        std::vector<std::string> row;
+        std::stringstream ss(line);
+        std::string cell;
+
+        while (std::getline(ss, cell, ',')) {
+            row.push_back(cell);
+        }
+
+        if (row.size() != 10) {
+            throw std::runtime_error("Invalid row in CSV. Expected 10 columns, found " + std::to_string(row.size()));
+        }
+
+        Model model;
+        model.id = std::stoi(row[0]);
+
+        std::string num;
+        std::stringstream struct_ss(row[1]);
+        while (std::getline(struct_ss, num, '-')) {
+            if (!num.empty())
+                model.net_struct.push_back(std::stoi(num));
+        }
+
+        try {
+            model.hidden_activation = Maps::str_to_activation.at(to_lower(row[2]));
+            model.output_activation = Maps::str_to_activation.at(to_lower(row[3]));
+            model.init_type = Maps::str_to_init.at(to_lower(row[4]));
+            model.opt_type = Maps::str_to_optimizer.at(to_lower(row[5]));
+        } catch (const std::out_of_range&) {
+            throw std::runtime_error("Invalid activation or init type in CSV row " + std::to_string(model.id));
+        }
+
+        model.batch_size = std::stoi(row[6]);
+        model.eta = static_cast<Scalar>(std::stod(row[7]));
+        model.lambda = static_cast<Scalar>(std::stod(row[8]));
+        model.alpha = static_cast<Scalar>(std::stod(row[9]));
+        grid_search.push_back(model);
+    }
+
+    file.close();
+    return grid_search;
+}
+
+void Model::print() const {
+    std::println("\nTraining Configuration:");
+
+    std::println(" • {:<25}{}", "Batch Size:", batch_size);
+    std::println(" • {:<25}{}", "Learning Rate:", eta);
+    std::println(" • {:<25}{}", "Regularization:", lambda);
+    std::println(" • {:<25}{}", "Momentum:", alpha);
+    std::println(" • {:<25}{}", "Hidden Activation:", Maps::activation_to_str.at(hidden_activation));
+    std::println(" • {:<25}{}", "Output Activation:", Maps::activation_to_str.at(output_activation));
+    std::println(" • {:<25}{}", "Weight Init:", Maps::init_to_str.at(init_type));
+    std::println(" • {:<25}{}", "Optimizer:", Maps::optimizer_to_str.at(opt_type));
+}
 
 // Dump and Load everything needed to reconstruct the model
-
+namespace Serializer {
 void dump_model(const std::string& file, const Model& model, Network* network) {
     std::ofstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
         std::println(stderr, "Failed to open {} for writing.", file);
         return;
     } else {
-        std::println("\n- Dumping model to: {}", file);
+        std::print("\n- Dumping model to: {}", file);
     }
 
     int magic_number = 0x4E4E4554; // "NNET" in hex
@@ -18,6 +107,7 @@ void dump_model(const std::string& file, const Model& model, Network* network) {
 
     dump_file.write(reinterpret_cast<const char*>(&model.hidden_activation), sizeof(model.hidden_activation));
     dump_file.write(reinterpret_cast<const char*>(&model.output_activation), sizeof(model.output_activation));
+    dump_file.write(reinterpret_cast<const char*>(&model.opt_type), sizeof(model.opt_type));
 
     int num_layers = static_cast<int>(model.net_struct.size());
     dump_file.write(reinterpret_cast<const char*>(&num_layers), sizeof(num_layers));
@@ -55,6 +145,7 @@ Network* load_model(const std::string& file) {
     Model model;
     dump_file.read(reinterpret_cast<char*>(&model.hidden_activation), sizeof(model.hidden_activation));
     dump_file.read(reinterpret_cast<char*>(&model.output_activation), sizeof(model.output_activation));
+    dump_file.read(reinterpret_cast<char*>(&model.opt_type), sizeof(model.opt_type));
 
     int num_layers;
     dump_file.read(reinterpret_cast<char*>(&num_layers), sizeof(num_layers));
@@ -83,3 +174,4 @@ Network* load_model(const std::string& file) {
 
     return new Network(model, layers_weights, layers_biases);
 }
+} // namespace Serializer

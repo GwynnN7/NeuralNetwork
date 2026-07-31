@@ -1,7 +1,6 @@
 #include "cli.hpp"
 #include "dataset.hpp"
-#include "dump.hpp"
-#include "functions.hpp"
+#include "model.hpp"
 #include "network.hpp"
 #include "types.hpp"
 #include "utility.hpp"
@@ -30,7 +29,7 @@ SplitResults inference(Dataset& dataset, Network* network, DataSplit& split) {
 }
 
 void predict(Dataset& dataset, Network* network, Args& args) {
-    std::vector<DataSplit> final_folds = split_dataset(dataset.num_samples, 5, args.train_ratio, args.shuffle);
+    std::vector<DataSplit> final_folds = DataSplit::split(dataset.num_samples, 5, args.train_ratio, args.shuffle);
     SplitResults results;
     for (size_t i = 0; i < final_folds.size(); ++i) {
         results.merge(inference(dataset, network, final_folds[i]));
@@ -47,8 +46,8 @@ void predict(Dataset& dataset, Network* network, Args& args) {
 int main(int argc, char* argv[]) {
     std::println("\n\n[Neural Network Training]");
 
-    std::signal(SIGINT, handle_sigint);
-    Args args = parse_args(argc, argv);
+    std::signal(SIGUSR1, handle_signal);
+    Args args = Args::parse(argc, argv);
 
     MODEL_PATH = "artifacts/" + args.name;
     std::filesystem::create_directories(MODEL_PATH);
@@ -57,12 +56,12 @@ int main(int argc, char* argv[]) {
     set_random_seed(args.seed);
 
     // Load the dataset
-    Dataset dataset = load_dataset(args.dataset_type, args.dataset_ratio);
+    Dataset dataset = Dataset::load(args.dataset_type, args.dataset_ratio);
 
     if (args.train) {
         // Prepare outer folds for cross-validation and load the grid search parameters
-        std::vector<DataSplit> outer_folds = split_dataset(dataset.num_samples, args.outer_folds, args.train_ratio, args.shuffle);
-        std::vector<Model> grid_search = load_grid_search(args.model_file);
+        std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, args.shuffle);
+        std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
         std::map<int, Model> best_models;
         // Outer loop for cross-validation
         for (size_t i = 0; i < outer_folds.size(); ++i) {
@@ -70,7 +69,7 @@ int main(int argc, char* argv[]) {
             SplitResults best_model_performance;
 
             // Prepare inner folds for model selection, on training set of the current outer fold (train_valid)
-            std::vector<DataSplit> inner_folds = split_dataset(outer_folds[i].train_indices.size(), args.inner_folds, args.train_ratio, args.shuffle);
+            std::vector<DataSplit> inner_folds = DataSplit::split(outer_folds[i].train_indices.size(), args.inner_folds, args.train_ratio, args.shuffle);
             // Remap the inner fold indices to the original dataset indices
             for (auto& inner_fold : inner_folds) {
                 for (int& relative_idx : inner_fold.train_indices) {
@@ -106,13 +105,18 @@ int main(int argc, char* argv[]) {
             best_fold_network.train(dataset, outer_folds[i], args.epochs, best_models[i].id, i, -1);
         }
 
+        std::println("\n[Best Models Summary]");
+        for (const auto& [outer_index, best_model] : best_models) {
+            std::println(" • Fold {}: Model {} at epoch {}", outer_index, best_model.id, best_model.epochs);
+        }
         if (args.dump) {
+            std::print("\n[Dumping Best Models]");
             // Dump the best models trained on the entire dataset after cross-validation
-            DataSplit full_split = split_dataset(dataset.num_samples, 1, 1.0).front(); // Create a single split containing the entire dataset
+            DataSplit full_split = DataSplit::split(dataset.num_samples, 1, 1.0, args.shuffle).front(); // Create a single split containing the entire dataset
             for (size_t i = 0; i < outer_folds.size(); ++i) {
                 Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
                 final_network.train(dataset, full_split, best_models[i].epochs, best_models[i].id, i, -1, false);
-                dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], &final_network);
+                Serializer::dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], &final_network);
             }
         }
         return 0;
@@ -123,13 +127,13 @@ int main(int argc, char* argv[]) {
             continue;
         }
         // Load the final model and evaluate it on a dummy split of the dataset
-        Network* final_network = load_model(file.path());
-        if (final_network == nullptr) {
+        Network* network = Serializer::load_model(file.path());
+        if (network == nullptr) {
             std::println(stderr, "Failed to load the model, skipping");
             continue;
         }
-        predict(dataset, final_network, args);
-        delete final_network;
+        predict(dataset, network, args);
+        delete network;
     }
     return 0;
 }

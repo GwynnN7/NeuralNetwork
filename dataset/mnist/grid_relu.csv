@@ -1,0 +1,5 @@
+id,net,hidden,output,init,opt,batch,eta,lambda,alpha
+0,128-64,relu,softmax,he,sgd,256,0.01,0.0,0.9
+1,128-64,relu,softmax,he,sgd,256,0.05,0.001,0.9
+2,128-64,relu,softmax,he,sgd,256,0.05,0.005,0.9
+3,64-32,relu,softmax,he,sgd,256,0.05,0.0,0.9

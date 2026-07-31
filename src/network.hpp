@@ -1,24 +1,10 @@
 #pragma once
 
 #include "dataset.hpp"
-#include "functions.hpp"
+#include "metrics.hpp"
+#include "model.hpp"
+#include "optimizer.hpp"
 #include "types.hpp"
-
-struct Model {
-    int id = 0;
-    std::vector<int> net_struct;
-    ActivationType hidden_activation;
-    ActivationType output_activation;
-    InitType init_type;
-
-    int epochs = 0;
-    int batch_size = 0;
-    Scalar eta = 0.0;
-    Scalar lambda = 0.0;
-    Scalar alpha = 0.0;
-};
-
-std::vector<Model> load_grid_search(const std::string& filename);
 
 class Layer {
   protected:
@@ -29,19 +15,29 @@ class Layer {
     virtual ~Layer() = default;
     virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
     virtual Matrix backward(const Matrix& output_gradient, const Model& model) = 0;
-    virtual Scalar weightNorm() const { return 0.0; }
+    virtual Scalar getWeightNorm() const { return 0.0; }
 };
 
 class DenseLayer : public Layer {
   private:
     Matrix W;
     Vector b;
-    Matrix delta_W;
+    std::unique_ptr<Optimizer> optimizer;
+
+    void setOptimizer(OptimizerType optType) {
+        switch (optType) {
+        case OptimizerType::SGD:
+            optimizer = std::make_unique<GradientDescent>(W.rows(), W.cols());
+            break;
+        default:
+            throw std::invalid_argument("Unsupported optimizer type");
+        }
+    }
 
   public:
-    DenseLayer(int input_size, int output_size, InitType init_type);
-    DenseLayer(Matrix weights, Vector biases) : W(weights), b(biases) {
-        delta_W = Matrix::Zero(W.rows(), W.cols());
+    DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type);
+    DenseLayer(Matrix weights, Vector biases, OptimizerType opt_type) : W(weights), b(biases) {
+        setOptimizer(opt_type);
     }
 
     Matrix forward(const Matrix& input_matrix, bool training) override;
@@ -49,7 +45,7 @@ class DenseLayer : public Layer {
 
     Matrix getWeights() const { return W; }
     Vector getBiases() const { return b; }
-    Scalar weightNorm() const override { return W.squaredNorm(); }
+    Scalar getWeightNorm() const override { return W.squaredNorm(); }
 };
 
 class ActivationLayer : public Layer {

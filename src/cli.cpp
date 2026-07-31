@@ -5,7 +5,7 @@
 
 #include <print>
 
-Args parse_args(int argc, char* argv[]) {
+Args Args::parse(int argc, char* argv[]) {
     Args args;
     CLI::App app{"Neural Network Training"};
     app.add_option("dataset", args.dataset_type, "Dataset type")
@@ -19,8 +19,8 @@ Args parse_args(int argc, char* argv[]) {
 
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(500);
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
-    app.add_flag("--dump", args.dump, "Dump model weights to file after total retraining")->default_val(false);
-    app.add_flag("--train", args.train, "Train the model")->default_val(false);
+    app.add_flag("--dump", args.dump, "Dump best models' weights to file after total retraining")->default_val(false);
+    app.add_flag("--train", args.train, "Train a new model")->default_val(false);
 
     app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.85);
     app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
