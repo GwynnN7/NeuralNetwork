@@ -1,4 +1,4 @@
-id,net,hidden,output,init,opt,batch_size,eta,lambda,alpha
-0,2,sigmoid,sigmoid,glorot,sgd,1,0.1,1e-4,0
-1,2-2,tanh,linear,lecun,sgd,10,1e-2,1e-6,0
-2,3,sigmoid,sigmoid,lecun,sgd,40,0.1,1e-4,0
+id,net,hidden,output,init,opt,loss,batch_size,eta,lambda,alpha
+0,2,tanh,softmax,glorot,sgd,cce,4,0.1,0,0.8
+1,4,sigmoid,sigmoid,lecun,sgd,mse,4,0.1,0,0.8
+2,3,sigmoid,sigmoid,glorot,sgd,bce,4,0.1,0,0.8

@@ -110,13 +110,7 @@ Matrix ActivationLayer::backward(const Matrix& output_gradient, [[maybe_unused]]
 // Network constructor that initializes args and sets the loss function
 Network::Network(const Model& model) {
     this->model = model;
-
-    // SOFTMAX activation is used with Categorical Cross-Entropy loss, while other activations use Mean Squared Error loss
-    if (model.output_activation == ActivationType::SOFTMAX) {
-        setLossFunction(LossType::CCE);
-    } else {
-        setLossFunction(LossType::MSE);
-    }
+    setLossFunction(model.loss_type);
 }
 
 // Network constructor that initializes pairs of DenseLayer and ActivationLayer based on the defined network structure
@@ -129,9 +123,11 @@ Network::Network(const Model& model, const int num_features, const int num_class
     }
     addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
+
+    validateNetworkStructure(num_classes);
 }
 
-// Network constructor that initializes pairs or DenseLayer and ActivationLayer with loaded weights and biases
+// Network constructor that initializes pairs of DenseLayer and ActivationLayer with loaded weights and biases
 Network::Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases) : Network(model) {
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
         addLayer(std::make_unique<DenseLayer>(weights[i], biases[i], model.opt_type));
@@ -139,6 +135,8 @@ Network::Network(const Model& model, std::vector<Matrix> weights, std::vector<Ve
     }
     addLayer(std::make_unique<DenseLayer>(weights.back(), biases.back(), model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
+
+    validateNetworkStructure(weights.back().rows());
 }
 
 // Utility function to set the loss function and its derivative based on the specified LossType
@@ -148,6 +146,24 @@ void Network::setLossFunction(LossType lossType) {
         loss_derivative = Maps::loss_map.at(lossType).second;
     } catch (const std::out_of_range&) {
         throw std::invalid_argument("Unsupported loss function type");
+    }
+}
+
+void Network::validateNetworkStructure(int num_classes) const {
+    if (layers.empty()) {
+        throw std::invalid_argument("Network is empty.");
+    }
+    if (model.task == TaskType::REGRESSION && model.loss_type != LossType::MSE) {
+        throw std::invalid_argument("Regression tasks must use MSE loss.");
+    }
+    if ((model.output_activation == ActivationType::SOFTMAX) != (model.loss_type == LossType::CCE)) {
+        throw std::invalid_argument("Softmax activation and CCE loss must be paired together.");
+    }
+    if (model.loss_type == LossType::CCE && num_classes < 2) {
+        throw std::invalid_argument("Softmax activation requires at least 2 output classes.");
+    }
+    if (model.loss_type == LossType::BCE && model.output_activation != ActivationType::SIGMOID) {
+        throw std::invalid_argument("BCE loss is only compatible with Sigmoid activation.");
     }
 }
 

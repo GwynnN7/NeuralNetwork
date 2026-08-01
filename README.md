@@ -7,11 +7,11 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 * **Dynamic Architecture**: Network structure and hyperparameters configurable via a `Grid Search` CSV file.
 * **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout` to select the best model based on Loss.
 * **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
-* **Loss Functions**: `MSE` (Mean Squared Error) and `CCE` (Categorical Cross-Entropy) automatically selected based on output activation.
+* **Loss Functions**: `MSE` (Mean Squared Error), `BCE` (Binary Cross-Entropy) and `CCE` (Categorical Cross-Entropy).
 * **Architecture Features**:
     * `L2 Weight Decay` ($\lambda$) and `Momentum` ($\alpha$).
     * `Batch`, `Mini-batch` and `Stochastic` update.
-    * `Gradient Descent` optimizer.
+    * `Gradient Descent` and `Adam` optimizer.
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
 * **Datasets Supported**: `XOR`, `XOR_HOT`, and `MNIST`.
 * **Logging & Visualization**: 
@@ -33,6 +33,7 @@ Network parameters are defined in a CSV file passed to the `--params` argument.
 | `output` | Activation function of the `output` layer  | `Sigmoid`, `Softmax`, `Linear` |
 | `init` | Initialization method of the weights| `Random`, `Lecun`, `Glorot`, `He` |
 | `opt` | Optimization method for the weights | `SGD` |
+| `loss` | Loss type for gradient calcuation | `MSE`, `BCE`, `CCE` |
 | `batch` | Batch size (use 0 for a single batch) | `int` |
 | `eta` | Learning rate of the network | `double` |
 | `lambda`| Regularization hyperparameter | `double` |

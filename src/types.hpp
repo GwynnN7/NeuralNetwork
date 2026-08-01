@@ -21,9 +21,11 @@ enum class ActivationType {
 
 enum class OptimizerType {
     SGD,
+    ADAM
 };
 
 enum class LossType { MSE,
+                      BCE,
                       CCE };
 
 enum class TaskType { REGRESSION,
@@ -49,6 +51,7 @@ const std::map<ActivationType, std::string> activation_to_str = {
 
 const std::map<LossType, std::string> loss_to_str = {
     {LossType::MSE, "Mean Squared Error"},
+    {LossType::BCE, "Binary Cross-Entropy"},
     {LossType::CCE, "Categorical Cross-Entropy"},
 };
 
@@ -66,6 +69,7 @@ const std::map<InitType, std::string> init_to_str = {
 
 const std::map<OptimizerType, std::string> optimizer_to_str = {
     {OptimizerType::SGD, "SGD"},
+    {OptimizerType::ADAM, "Adam"},
 };
 
 const std::map<DatasetType, std::string> dataset_to_str = {
@@ -88,5 +92,11 @@ const std::map<std::string, InitType> str_to_init{
     {"he", InitType::HE}};
 
 const std::map<std::string, OptimizerType> str_to_optimizer{
-    {"sgd", OptimizerType::SGD}};
+    {"sgd", OptimizerType::SGD},
+    {"adam", OptimizerType::ADAM}};
+
+const std::map<std::string, LossType> str_to_loss{
+    {"mse", LossType::MSE},
+    {"bce", LossType::BCE},
+    {"cce", LossType::CCE}};
 } // namespace Maps

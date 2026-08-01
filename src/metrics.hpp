@@ -45,8 +45,8 @@ struct MetricsResult {
     std::vector<Scalar> accuracy;
     std::vector<int> occurrences;
 
-    void print(bool is_regression) const {
-        if (!is_regression) {
+    void print(TaskType task) const {
+        if (task == TaskType::CLASSIFICATION) {
             std::println(" • Accuracy:   {:.2f}%", std::accumulate(accuracy.begin(), accuracy.end(), 0.0) / accuracy.size() * 100.0);
         }
         std::println(" • Loss: {:.3f}", std::accumulate(loss.begin(), loss.end(), 0.0) / loss.size());
@@ -115,19 +115,38 @@ struct SplitResults {
         test_metrics.average();
     }
 
+    void print(TaskType task) const {
+        std::println("\nTraining Set Metrics:");
+        train_metrics.print(task);
+        std::println("Test Set Metrics:");
+        test_metrics.print(task);
+    }
+
     bool operator>(const SplitResults& other) const {
-        if (other.test_metrics.loss.empty()) {
+        if (other.get_metric().empty())
             return true;
-        }
+        if (get_metric().empty())
+            return false;
 
-        auto this_min = std::min_element(test_metrics.loss.begin(), test_metrics.loss.end());
-        auto other_min = std::min_element(other.test_metrics.loss.begin(), other.test_metrics.loss.end());
-
-        return *this_min <= *other_min;
+        return get_best_metric() < other.get_best_metric();
     }
 
     int get_best_index() const {
-        auto min_it = std::min_element(test_metrics.loss.begin(), test_metrics.loss.end());
-        return std::distance(test_metrics.loss.begin(), min_it);
+        const auto& metric = get_metric();
+        if (metric.empty())
+            return -1;
+
+        auto it = std::min_element(metric.begin(), metric.end()); // Lowest loss
+        return std::distance(metric.begin(), it);
+    }
+
+  private:
+    const std::vector<Scalar>& get_metric() const {
+        return test_metrics.loss;
+    }
+
+    Scalar get_best_metric() const {
+        const auto& metric = get_metric();
+        return *std::min_element(metric.begin(), metric.end()); // Lowest loss
     }
 };

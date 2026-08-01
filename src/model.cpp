@@ -44,8 +44,8 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
             row.push_back(cell);
         }
 
-        if (row.size() != 10) {
-            throw std::runtime_error("Invalid row in CSV. Expected 10 columns, found " + std::to_string(row.size()));
+        if (row.size() != 11) {
+            throw std::runtime_error("Invalid row in CSV. Expected 11 columns, found " + std::to_string(row.size()));
         }
 
         Model model;
@@ -63,14 +63,15 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
             model.output_activation = Maps::str_to_activation.at(to_lower(row[3]));
             model.init_type = Maps::str_to_init.at(to_lower(row[4]));
             model.opt_type = Maps::str_to_optimizer.at(to_lower(row[5]));
+            model.loss_type = Maps::str_to_loss.at(to_lower(row[6]));
         } catch (const std::out_of_range&) {
             throw std::runtime_error("Invalid activation or init type in CSV row " + std::to_string(model.id));
         }
 
-        model.batch_size = std::stoi(row[6]);
-        model.eta = static_cast<Scalar>(std::stod(row[7]));
-        model.lambda = static_cast<Scalar>(std::stod(row[8]));
-        model.alpha = static_cast<Scalar>(std::stod(row[9]));
+        model.batch_size = std::stoi(row[7]);
+        model.eta = static_cast<Scalar>(std::stod(row[8]));
+        model.lambda = static_cast<Scalar>(std::stod(row[9]));
+        model.alpha = static_cast<Scalar>(std::stod(row[10]));
         grid_search.push_back(model);
     }
 
@@ -89,6 +90,8 @@ void Model::print() const {
     std::println(" • {:<25}{}", "Output Activation:", Maps::activation_to_str.at(output_activation));
     std::println(" • {:<25}{}", "Weight Init:", Maps::init_to_str.at(init_type));
     std::println(" • {:<25}{}", "Optimizer:", Maps::optimizer_to_str.at(opt_type));
+    std::println(" • {:<25}{}", "Loss Function:", Maps::loss_to_str.at(loss_type));
+    std::println(" • {:<25}{}", "Task Type:", Maps::task_to_str.at(task));
 }
 
 // Dump and Load everything needed to reconstruct the model
@@ -108,6 +111,8 @@ void dump_model(const std::string& file, const Model& model, Network* network) {
     dump_file.write(reinterpret_cast<const char*>(&model.hidden_activation), sizeof(model.hidden_activation));
     dump_file.write(reinterpret_cast<const char*>(&model.output_activation), sizeof(model.output_activation));
     dump_file.write(reinterpret_cast<const char*>(&model.opt_type), sizeof(model.opt_type));
+    dump_file.write(reinterpret_cast<const char*>(&model.loss_type), sizeof(model.loss_type));
+    dump_file.write(reinterpret_cast<const char*>(&model.task), sizeof(model.task));
 
     int num_layers = static_cast<int>(model.net_struct.size());
     dump_file.write(reinterpret_cast<const char*>(&num_layers), sizeof(num_layers));
@@ -127,7 +132,7 @@ void dump_model(const std::string& file, const Model& model, Network* network) {
     }
 }
 
-Network* load_model(const std::string& file) {
+Network* load_model(const std::string& file, const Dataset& dataset) {
     std::ifstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
         std::println(stderr, "Failed to open {} for reading.", file);
@@ -146,6 +151,12 @@ Network* load_model(const std::string& file) {
     dump_file.read(reinterpret_cast<char*>(&model.hidden_activation), sizeof(model.hidden_activation));
     dump_file.read(reinterpret_cast<char*>(&model.output_activation), sizeof(model.output_activation));
     dump_file.read(reinterpret_cast<char*>(&model.opt_type), sizeof(model.opt_type));
+    dump_file.read(reinterpret_cast<char*>(&model.loss_type), sizeof(model.loss_type));
+    dump_file.read(reinterpret_cast<char*>(&model.task), sizeof(model.task));
+    if (model.task != dataset.task) {
+        std::println(stderr, "Model was trained for a different task type than the provided dataset.");
+        return nullptr;
+    }
 
     int num_layers;
     dump_file.read(reinterpret_cast<char*>(&num_layers), sizeof(num_layers));

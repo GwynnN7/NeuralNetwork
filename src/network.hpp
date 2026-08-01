@@ -69,6 +69,7 @@ class Network {
 
     void setLossFunction(LossType lossType);
     void addLayer(std::unique_ptr<Layer> layer);
+    void validateNetworkStructure(int num_classes) const;
 
   public:
     Network(const Model& model);

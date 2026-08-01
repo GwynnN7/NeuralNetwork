@@ -13,7 +13,7 @@
 void train(const Dataset& dataset, const Args& args) {
     // Prepare outer folds for cross-validation and load the grid search parameters
     const std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, args.shuffle);
-    const std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
+    std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
     std::map<int, Model> best_models;
     // Outer loop for cross-validation
     for (size_t i = 0; i < outer_folds.size(); ++i) {
@@ -33,7 +33,8 @@ void train(const Dataset& dataset, const Args& args) {
         }
 
         // Inner loop for model selection
-        for (const auto& grid_model : grid_search) {
+        for (auto& grid_model : grid_search) {
+            grid_model.task = dataset.task;         // Assign the task type to the model based on the dataset
             SplitResults current_model_performance; // Metrics for the current model across inner folds
             // Loop through inner folds if model selection is required, otherwise train on the entire train_valid set
             for (size_t j = 0; j < inner_folds.size() && grid_search.size() > 1; ++j) {
@@ -78,7 +79,7 @@ void test(const Dataset& dataset, const Args& args) {
         if (file.path().extension() != ".bin") {
             continue;
         }
-        std::unique_ptr<Network> network(Serializer::load_model(file.path()));
+        std::unique_ptr<Network> network(Serializer::load_model(file.path(), dataset));
         if (network == nullptr) {
             std::println(stderr, "Failed to load the model, skipping");
             continue;
@@ -104,11 +105,7 @@ void test(const Dataset& dataset, const Args& args) {
         }
 
         results.average();
-        const bool is_regression = network->model.output_activation == ActivationType::LINEAR;
-        std::println("\nTraining Set Metrics:");
-        results.train_metrics.print(is_regression);
-        std::println("Test Set Metrics:");
-        results.test_metrics.print(is_regression);
+        results.print(network->model.task);
     }
 }
 

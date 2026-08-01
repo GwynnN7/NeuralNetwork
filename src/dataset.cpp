@@ -109,7 +109,7 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix features = xor_data.topRows(xor_data.rows() - 1);
         Matrix labels = xor_data.bottomRows(1);
 
-        Dataset dataset{DatasetType::XOR, features.replicate(1, 100), labels.replicate(1, 100)};
+        Dataset dataset{DatasetType::XOR, TaskType::REGRESSION, features.replicate(1, 100), labels.replicate(1, 100)};
         return dataset;
     };
     case DatasetType::XOR_HOT: {
@@ -118,7 +118,7 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix features = xor_hot_data.topRows(xor_hot_data.rows() - 2);
         Matrix labels = xor_hot_data.bottomRows(2);
 
-        Dataset dataset{DatasetType::XOR_HOT, features.replicate(1, 100), labels.replicate(1, 100)};
+        Dataset dataset{DatasetType::XOR_HOT, TaskType::CLASSIFICATION, features.replicate(1, 100), labels.replicate(1, 100)};
         return dataset;
     };
     case DatasetType::MNIST: {
@@ -134,7 +134,7 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         all_features << train_features, test_features;
         all_labels << train_labels, test_labels;
 
-        return Dataset{DatasetType::MNIST, all_features, all_labels};
+        return Dataset{DatasetType::MNIST, TaskType::CLASSIFICATION, all_features, all_labels};
     };
     default: {
         throw std::invalid_argument("Unsupported dataset type");
