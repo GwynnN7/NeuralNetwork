@@ -24,6 +24,7 @@ class DenseLayer : public Layer {
     Vector b;
     std::unique_ptr<Optimizer> optimizer;
 
+    // Set the optimizer of the network based on the specified OptimizerType
     void setOptimizer(OptimizerType optType) {
         switch (optType) {
         case OptimizerType::SGD:
@@ -86,7 +87,7 @@ class Network {
     Model model;
 
     Matrix predict(const Matrix& out, bool training = false);
-    SplitResults train(const Dataset& dataset, const DataSplit& indices, int epochs, int model_index, int outer_index, int inner_index, bool logging = true);
+    SplitResults train(const Dataset& dataset, const DataSplit& indices, int epochs, int patience, int model_index, int outer_index, int inner_index, bool logging = true);
 
     std::vector<const DenseLayer*> getDenseLayers() const;
     LossFunction getLossFunction() const { return loss_func; }

@@ -7,6 +7,7 @@ struct Args {
     std::string name;
 
     int epochs;
+    int patience;
     Scalar train_ratio;
     Scalar dataset_ratio;
 

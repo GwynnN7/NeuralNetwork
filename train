@@ -14,7 +14,8 @@ fi
 # --------------------
 # Training parameters
 
-EPOCHS=800
+EPOCHS=1000
+PATIENCE=55
 INNER_K=1
 OUTER_K=1
 
@@ -42,7 +43,7 @@ echo "[4] Kill Process"
 booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --train --shuffle \
     --params $GRID_FILE \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
-    --inner-k $INNER_K --outer-k $OUTER_K --epochs $EPOCHS &
+    --inner-k $INNER_K --outer-k $OUTER_K --epochs $EPOCHS --patience $PATIENCE &
 
 while true; do
     if read -t 1 -n 1 -s key; then

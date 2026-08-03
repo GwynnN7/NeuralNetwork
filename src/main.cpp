@@ -15,6 +15,7 @@ void train(const Dataset& dataset, const Args& args) {
     const std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, args.shuffle);
     std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
     std::map<int, Model> best_models;
+
     // Outer loop for cross-validation
     for (size_t i = 0; i < outer_folds.size(); ++i) {
         // Keep track of the best model for the current outer fold
@@ -31,16 +32,18 @@ void train(const Dataset& dataset, const Args& args) {
                 relative_idx = outer_folds[i].train_indices[relative_idx];
             }
         }
-
         // Inner loop for model selection
         for (auto& grid_model : grid_search) {
             grid_model.task = dataset.task;         // Assign the task type to the model based on the dataset
             SplitResults current_model_performance; // Metrics for the current model across inner folds
-            // Loop through inner folds if model selection is required, otherwise train on the entire train_valid set
+            // Loop through inner folds if in model selection
             for (size_t j = 0; j < inner_folds.size() && grid_search.size() > 1; ++j) {
-                Network network(grid_model, dataset.num_features, dataset.num_classes);                                      // Create a new network for the current model configuration
-                const SplitResults train_results = network.train(dataset, inner_folds[j], args.epochs, grid_model.id, i, j); // Train the model on the current inner fold
-                current_model_performance.merge(train_results);                                                              // Accumulate metrics for the current model across inner folds
+                // Create a new network for the current model configuration
+                Network network(grid_model, dataset.num_features, dataset.num_classes);
+
+                // Train the model on the current inner fold
+                const SplitResults train_results = network.train(dataset, inner_folds[j], args.epochs, args.patience, grid_model.id, i, j);
+                current_model_performance.add(train_results); // Accumulate metrics for the current model across inner folds
             }
             current_model_performance.average(); // Average the metrics across inner folds for the current model to get a single performance metric
 
@@ -48,26 +51,25 @@ void train(const Dataset& dataset, const Args& args) {
             if (current_model_performance > best_model_performance) {
                 best_models.insert_or_assign(i, grid_model);
                 best_model_performance = current_model_performance;
-                best_models[i].epochs = best_model_performance.get_best_index() + 1; // Store the best epoch for the current outer fold
             }
         }
 
-        // Re-train the best model of each outer fold on the train_valid set
+        // (Re)Train the best model of each outer fold on the train(_valid) set
         Network best_fold_network = Network(best_models[i], dataset.num_features, dataset.num_classes);
-        best_fold_network.train(dataset, outer_folds[i], args.epochs, best_models[i].id, i, -1);
+        best_fold_network.train(dataset, outer_folds[i], args.epochs, args.patience, best_models[i].id, i, -1); // Pass -1 for inner_index to indicate no model selection during final training
     }
 
     std::println("\n[Best Models Summary]");
     for (const auto& [outer_index, best_model] : best_models) {
-        std::println(" • Fold {}: Model {} at epoch {}", outer_index, best_model.id, best_model.epochs);
+        std::println(" • Fold {}: Model {}", outer_index, best_model.id);
     }
     if (args.dump) {
         std::print("\n[Dumping Best Models]");
-        // Dump the best models trained on the entire dataset after cross-validation
-        const DataSplit full_split = DataSplit::split(dataset.num_samples, 1, 1.0, args.shuffle).front(); // Create a single split containing the entire dataset
+        // Dump the best models found with cross-validation,trained on the entire dataset
+        const DataSplit full_split = DataSplit::split(dataset.num_samples, 1, 1.0, args.shuffle).front(); // Create a single holdout split (k=1) containing the entire dataset (train_ratio=1.0)
         for (size_t i = 0; i < outer_folds.size(); ++i) {
             Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
-            final_network.train(dataset, full_split, best_models[i].epochs, best_models[i].id, i, -1, false);
+            final_network.train(dataset, full_split, args.epochs, args.patience, best_models[i].id, i, -1, false);
             Serializer::dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], &final_network);
         }
     }
@@ -90,27 +92,29 @@ void test(const Dataset& dataset, const Args& args) {
         for (size_t i = 0; i < splits.size(); ++i) {
             MetricsResult train_metrics, test_metrics;
 
-            // Evaluate the model
+            // Extract training and testing features and labels for the current split
             Matrix train_features = dataset.features(Eigen::placeholders::all, splits[i].train_indices);
             Matrix train_labels = dataset.labels(Eigen::placeholders::all, splits[i].train_indices);
             Matrix test_features = dataset.features(Eigen::placeholders::all, splits[i].test_indices);
             Matrix test_labels = dataset.labels(Eigen::placeholders::all, splits[i].test_indices);
 
+            // Evaluate the model
             Matrix final_train_predictions = network->predict(train_features);
             Matrix final_test_predictions = network->predict(test_features);
 
-            train_metrics.add(train_labels, final_train_predictions, network->getLossFunction());
-            test_metrics.add(test_labels, final_test_predictions, network->getLossFunction());
-            results.merge({train_metrics, test_metrics});
+            // Calculate metrics for the current split and accumulate them
+            train_metrics.append(train_labels, final_train_predictions, network->getLossFunction());
+            test_metrics.append(test_labels, final_test_predictions, network->getLossFunction());
+            results.add({train_metrics, test_metrics});
         }
-
+        // Average the metrics across all splits and print the results
         results.average();
         results.print(network->model.task);
     }
 }
 
 int main(int argc, char* argv[]) {
-    std::println("\n\n[Gwynn7's Neural Network]");
+    std::println("\n\n[Neural Network Framework]");
 
     std::signal(SIGUSR1, handle_signal);
     Args args = Args::parse(argc, argv);

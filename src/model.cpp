@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+// Load a grid search of models from a CSV file
 std::vector<Model> Model::load_grid_search(const std::string& filename) {
     std::vector<Model> grid_search;
     std::ifstream file(filename);
@@ -17,6 +18,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         throw std::runtime_error("Failed to open grid search file: " + filename);
     }
 
+    // Helper lambda function to convert a string to lowercase for case-insensitive mapping
     auto to_lower = [](std::string s) {
         std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
         return s;
@@ -26,31 +28,35 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
     bool is_first_line = true;
 
     while (std::getline(file, line)) {
+        // Skip empty lines or lines that contain only whitespace
         if (line.empty() || line.find_first_not_of(" \t\r") == std::string::npos) {
             continue;
         }
 
+        // Skip the header line if it contains non-numeric characters
         if (is_first_line) {
             is_first_line = false;
             if (!std::isdigit(line[0]))
                 continue;
         }
 
+        // Load the row of the CSV into a vector of strings, splitted by commas
         std::vector<std::string> row;
         std::stringstream ss(line);
         std::string cell;
-
         while (std::getline(ss, cell, ',')) {
             row.push_back(cell);
         }
 
-        if (row.size() != 11) {
-            throw std::runtime_error("Invalid row in CSV. Expected 11 columns, found " + std::to_string(row.size()));
+        // Validate that the row has the expected number of columns
+        if (row.size() != HYPERPARAMS_NUM) {
+            throw std::runtime_error("Invalid row in CSV. Expected " + std::to_string(HYPERPARAMS_NUM) + " columns, found " + std::to_string(row.size()));
         }
 
         Model model;
         model.id = std::stoi(row[0]);
 
+        // Parse the network structure from the second column (e.g., "64-32-10" for a network with 3 hidden layers)
         std::string num;
         std::stringstream struct_ss(row[1]);
         while (std::getline(struct_ss, num, '-')) {
@@ -58,6 +64,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
                 model.net_struct.push_back(std::stoi(num));
         }
 
+        // Parse the remaining hyperparameters from the row
         try {
             model.hidden_activation = Maps::str_to_activation.at(to_lower(row[2]));
             model.output_activation = Maps::str_to_activation.at(to_lower(row[3]));
@@ -163,6 +170,7 @@ Network* load_model(const std::string& file, const Dataset& dataset) {
     model.net_struct.resize(num_layers);
     dump_file.read(reinterpret_cast<char*>(model.net_struct.data()), num_layers * sizeof(int));
 
+    // Read the weights and biases for each layer
     std::vector<Matrix> layers_weights;
     std::vector<Vector> layers_biases;
     for (int i = 0; i < num_layers + 1; ++i) {
@@ -183,6 +191,7 @@ Network* load_model(const std::string& file, const Dataset& dataset) {
         layers_biases.push_back(biases);
     }
 
+    // Create a new Network instance using the loaded model and weights/biases
     return new Network(model, layers_weights, layers_biases);
 }
 } // namespace Serializer

@@ -20,8 +20,7 @@ struct Model {
     Scalar lambda = 0.0;
     Scalar alpha = 0.0;
 
-    // Not Hyperparameter
-    int epochs = 0;
+    // Runtime parameters, not part of model selection
     TaskType task = TaskType::REGRESSION;
 
     void print() const;

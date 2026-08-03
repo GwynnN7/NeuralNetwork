@@ -11,12 +11,10 @@
 
 inline std::string MODEL_PATH;
 
+// Flag and signal handler to handle cli early stopping
 inline volatile std::sig_atomic_t early_stop_flag = 0;
-inline void handle_signal(int sig) {
-    if (early_stop_flag) {
-        std::exit(sig);
-    }
-    early_stop_flag = 1;
+inline void handle_signal([[maybe_unused]] int sig) {
+    early_stop_flag = early_stop_flag ? 0 : 1;
 }
 
 inline std::mt19937& get_random_generator() {
@@ -32,6 +30,7 @@ inline void set_random_seed(unsigned int seed) {
 inline void print_random_samples(Matrix& target, Matrix& predictions) {
     std::println("\nRandom Samples Predictions:");
 
+    // Randomly select 3 samples from the dataset to display predictions
     std::uniform_int_distribution<int> dist(0, target.cols() - 1);
     for (int j = 0; j < std::min(3, (int)target.cols()); ++j) {
         int sample_index = dist(get_random_generator());

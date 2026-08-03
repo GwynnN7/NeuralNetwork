@@ -13,8 +13,6 @@
 #include <string>
 #include <vector>
 
-#define LOG_FREQ 25
-
 // -- DenseLayer class implementation --
 
 // DenseLayer constructor that initializes weights based on the specified initialization type
@@ -38,7 +36,7 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
         throw std::invalid_argument("Unsupported initialization type");
     }
 
-    // Initialize weights and biases pre-transposed for efficient matrix multiplication
+    // Initialize weights and biases pre-transposed for more efficient matrix multiplication later on
     switch (init_type) {
     case InitType::HE: {
         std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
@@ -51,7 +49,6 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
     }
 
     setOptimizer(opt_type);
-
     b = Vector::Zero(output_size);
 }
 
@@ -73,7 +70,8 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model) {
     Vector bias_delta = output_gradient.rowwise().sum() / X.cols();      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
     Matrix input_gradient = W.transpose() * output_gradient;             // Calculate the neuron gradient to propagate to the previous layer
 
-    optimizer->update(W, b, weights_delta, bias_delta, model); // Update weights and biases using the optimizer
+    // Update weights and biases using the optimizer
+    optimizer->update(W, b, weights_delta, bias_delta, model);
 
     return input_gradient;
 }
@@ -92,7 +90,7 @@ ActivationLayer::ActivationLayer(ActivationType activationType) {
 
 // Forward pass through the ActivationLayer, applying the activation function to the input matrix
 Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
-    Matrix output_matrix = activation(input_matrix); // Apply the activation function to the input matrix
+    Matrix output_matrix = activation(input_matrix); // Call the activation function on the input matrix
     if (training) {
         X = input_matrix, Y = output_matrix; // Store input and output for backpropagation
     }
@@ -118,9 +116,12 @@ Network::Network(const Model& model, const int num_features, const int num_class
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
         int input_features = i == 0 ? num_features : model.net_struct[i - 1];
         int num_neurons = model.net_struct[i];
+
+        // Add a DenseLayer and an ActivationLayer for each layer in the network structure
         addLayer(std::make_unique<DenseLayer>(input_features, num_neurons, model.init_type, model.opt_type));
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
     }
+    // Add the final output layer with the specified number of classes and output activation
     addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
 
@@ -130,9 +131,11 @@ Network::Network(const Model& model, const int num_features, const int num_class
 // Network constructor that initializes pairs of DenseLayer and ActivationLayer with loaded weights and biases
 Network::Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases) : Network(model) {
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
+        // Add a DenseLayer and an ActivationLayer for each layer in the network structure with loaded weights and biases
         addLayer(std::make_unique<DenseLayer>(weights[i], biases[i], model.opt_type));
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
     }
+    // Add the final output layer with the specified number of classes and output activation with loaded weights and biases
     addLayer(std::make_unique<DenseLayer>(weights.back(), biases.back(), model.opt_type));
     addLayer(std::make_unique<ActivationLayer>(model.output_activation));
 
@@ -151,19 +154,20 @@ void Network::setLossFunction(LossType lossType) {
 
 void Network::validateNetworkStructure(int num_classes) const {
     if (layers.empty()) {
-        throw std::invalid_argument("Network is empty.");
+        throw std::invalid_argument("Network is empty");
     }
     if (model.task == TaskType::REGRESSION && model.loss_type != LossType::MSE) {
-        throw std::invalid_argument("Regression tasks must use MSE loss.");
+        throw std::invalid_argument("Regression tasks must use MSE loss");
     }
     if ((model.output_activation == ActivationType::SOFTMAX) != (model.loss_type == LossType::CCE)) {
-        throw std::invalid_argument("Softmax activation and CCE loss must be paired together.");
+        // Must be paired together because Softmax derivative is combined with CCE loss derivative to simplify the calculation
+        throw std::invalid_argument("Softmax activation and CCE loss must be paired together");
     }
     if (model.loss_type == LossType::CCE && num_classes < 2) {
-        throw std::invalid_argument("Softmax activation requires at least 2 output classes.");
+        throw std::invalid_argument("Softmax activation requires at least 2 output classes");
     }
     if (model.loss_type == LossType::BCE && model.output_activation != ActivationType::SIGMOID) {
-        throw std::invalid_argument("BCE loss is only compatible with Sigmoid activation.");
+        throw std::invalid_argument("BCE loss is only compatible with Sigmoid activation");
     }
 }
 
@@ -189,16 +193,17 @@ Matrix Network::predict(const Matrix& out, bool training) {
     Matrix new_out = out;
     for (auto& layer : layers) {
         new_out = layer->forward(new_out, training); // Forward pass through each layer
-        weights_norm += layer->getWeightNorm();      // Accumulate the squared norm of weights for L2 regularization loss (not really used)
+        weights_norm += layer->getWeightNorm();      // Accumulate the squared norm of weights for L2 regularization loss (not really used anymore)
     }
     return new_out;
 }
 
 // Train the network using the dataset provided by the model_set
-SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, int epochs, int model_index, int outer_index, int inner_index, bool logging) {
+SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, int epochs, int patience, int model_index, int outer_index, int inner_index, bool logging) {
     if (outer_index == 0 && inner_index == 0) {
         model.print();
     }
+    bool in_model_selection = inner_index != -1; // if there are no inner folds, then we are not in model selection mode
 
     // File logging handling
     std::ofstream log_file;
@@ -226,15 +231,28 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;
     const int num_batches = (input_size + current_batch_size - 1) / current_batch_size;
 
-    // Metrics
+    // Early Stopping variables
+    Scalar patience_loss = 0.0;
+    int epochs_without_improvement = 0;
+
+    // Logging and metrics variables
     SplitResults split_results;
     int logged_epoch = 0;
+
+    // Linear learning rate decay parameters
+    Scalar initial_eta = model.eta;
+    Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
+    Scalar tau = epochs * TAU_MULTIPLIER;
 
     // Local copy of the training indices to shuffle for each epoch
     std::vector<int> epoch_indices = indices.train_indices;
     for (int i = 0; i < epochs; i++) {
         // Shuffle the training data indices for current epoch
         std::ranges::shuffle(epoch_indices, get_random_generator());
+
+        // Update the learning rate based on the current epoch using linear decay
+        Scalar gamma = std::min(static_cast<Scalar>(1.0), static_cast<Scalar>(i / tau));
+        model.eta = (1.0 - gamma) * initial_eta + (gamma * target_eta);
 
         MetricsResult batch_metrics;
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
@@ -251,7 +269,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
             Matrix batch_prediction = predict(batch_features, true);
 
             // Calculate the loss and accuracy for the current batch and accumulate for the epoch
-            batch_metrics.merge(batch_labels, batch_prediction, loss_func);
+            batch_metrics.add(batch_labels, batch_prediction, loss_func);
 
             // Start the backward pass to update weights and biases based on the output loss gradient
             Matrix gradient = loss_derivative(batch_labels, batch_prediction);
@@ -259,19 +277,49 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
                 gradient = (*it)->backward(gradient, model);
             }
         }
+        split_results.train_metrics.append(batch_metrics);
 
-        if (early_stop_flag) {
-            std::println("\n[Manual stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
-            break;
-        }
-
-        if (logging) {
+        if ((patience > 0 && in_model_selection) || logging) {
             // Evaluate the model on the test set and calculate the loss and accuracy
             Matrix test_prediction = predict(test_features);
-            split_results.average(); // Average batch metrics for the epoch
-            split_results.train_metrics.add(batch_metrics);
-            split_results.test_metrics.add(test_labels, test_prediction, loss_func);
+            split_results.test_metrics.append(test_labels, test_prediction, loss_func);
+        }
 
+        split_results.average(); // Average batch metrics for the epoch (if batch training was used)
+
+        // Early stopping logic based on the patience parameter
+        if (patience > 0) {
+            if (in_model_selection) {
+                // Use validation loss (that stopped decreasing) for early stopping during model selection (using patience)
+                Scalar test_loss = split_results.test_metrics.loss.back();
+                if (i == 0 || test_loss < patience_loss) {
+                    epochs_without_improvement = 0;
+                    patience_loss = test_loss;
+                } else {
+                    epochs_without_improvement++;
+                }
+
+                if (epochs_without_improvement >= patience) {
+                    std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+                    break;
+                }
+
+            } else {
+                // Use training loss (that stopped decreasing significantly) for early stopping during final training (using patience)
+                Scalar train_loss = split_results.train_metrics.loss.back();
+                int train_patience = std::max(5, patience / 2); // Use a smaller patience for this method
+                if (i > train_patience) {
+                    patience_loss = split_results.train_metrics.loss[i - train_patience]; // Compare with loss from 'train_patience' epochs ago
+                    Scalar progress = (patience_loss - train_loss) / (patience_loss + EPSILON);
+                    if (progress < ES_TRAIN) {
+                        std::println("\n[Automatic Early stopping: Outer Fold {} | Epoch {}]", outer_index, i);
+                        break;
+                    }
+                }
+            }
+        }
+        if (logging && log_file.is_open()) {
+            // Log the metrics for the current epoch to the log file
             if (i > 0 && (i % LOG_FREQ == 0 || i == epochs - 1)) {
                 while (logged_epoch < i) {
                     log_file << logged_epoch << ","
@@ -284,9 +332,14 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
                 log_file.flush();
             }
         }
+
+        if (early_stop_flag) {
+            std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+            early_stop_flag = 0; // Reset the early stop flag for the next fold
+            break;
+        }
     }
 
-    early_stop_flag = 0; // Reset the early stop flag for the next fold
     if (log_file.is_open()) {
         log_file.close();
     }

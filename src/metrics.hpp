@@ -43,7 +43,7 @@ inline Scalar classification_accuracy(const Matrix& target, const Matrix& predic
 struct MetricsResult {
     std::vector<Scalar> loss;
     std::vector<Scalar> accuracy;
-    std::vector<int> occurrences;
+    std::vector<int> occurrences; // Number of occurrences for each epoch (used for averaging)
 
     void print(TaskType task) const {
         if (task == TaskType::CLASSIFICATION) {
@@ -52,19 +52,22 @@ struct MetricsResult {
         std::println(" • Loss: {:.3f}", std::accumulate(loss.begin(), loss.end(), 0.0) / loss.size());
     }
 
-    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
+    // Append metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function
+    void append(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
         loss.push_back(loss_func(target, prediction));
         accuracy.push_back(Metrics::classification_accuracy(target, prediction));
         occurrences.push_back(1);
     }
 
-    void add(const MetricsResult& other) {
+    // Append metrics from another MetricsResult instance
+    void append(const MetricsResult& other) {
         loss.insert(loss.end(), other.loss.begin(), other.loss.end());
         accuracy.insert(accuracy.end(), other.accuracy.begin(), other.accuracy.end());
         occurrences.insert(occurrences.end(), other.occurrences.begin(), other.occurrences.end());
     }
 
-    void merge(const MetricsResult& other) {
+    // Add metrics from another MetricsResult instance, accumulating values for the same epochs
+    void add(const MetricsResult& other) {
         for (size_t i = 0; i < other.loss.size(); ++i) {
             if (i < loss.size()) {
                 loss[i] += other.loss[i];
@@ -78,12 +81,14 @@ struct MetricsResult {
         }
     }
 
-    void merge(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
+    // Add metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function, accumulating values for the same epochs
+    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
         Scalar batch_loss = loss_func(target, prediction);
         Scalar batch_accuracy = Metrics::classification_accuracy(target, prediction);
 
+        // If this is the first epoch, initialize the metrics
         if (loss.empty()) {
-            add(target, prediction, loss_func);
+            append(target, prediction, loss_func);
             return;
         }
 
@@ -92,6 +97,7 @@ struct MetricsResult {
         occurrences.back() += 1;
     }
 
+    // Average the accumulated metrics for each epoch using the number of occurrences
     void average() {
         for (size_t i = 0; i < loss.size(); ++i) {
             loss[i] /= occurrences[i];
@@ -105,11 +111,19 @@ struct SplitResults {
     MetricsResult train_metrics;
     MetricsResult test_metrics;
 
-    void merge(const SplitResults& other) {
-        train_metrics.merge(other.train_metrics);
-        test_metrics.merge(other.test_metrics);
+    // Call the append method for both train_metrics and test_metrics
+    void append(const Matrix& train_target, const Matrix& train_prediction, const Matrix& test_target, const Matrix& test_prediction, LossFunction loss_func) {
+        train_metrics.append(train_target, train_prediction, loss_func);
+        test_metrics.append(test_target, test_prediction, loss_func);
     }
 
+    // Call the add method for both train_metrics and test_metrics
+    void add(const SplitResults& other) {
+        train_metrics.add(other.train_metrics);
+        test_metrics.add(other.test_metrics);
+    }
+
+    // Call the average method for both train_metrics and test_metrics
     void average() {
         train_metrics.average();
         test_metrics.average();
@@ -122,6 +136,7 @@ struct SplitResults {
         test_metrics.print(task);
     }
 
+    // Overload the '>' operator to compare SplitResults based on the best test metric
     bool operator>(const SplitResults& other) const {
         if (other.get_metric().empty())
             return true;
@@ -131,22 +146,15 @@ struct SplitResults {
         return get_best_metric() < other.get_best_metric();
     }
 
-    int get_best_index() const {
-        const auto& metric = get_metric();
-        if (metric.empty())
-            return -1;
-
-        auto it = std::min_element(metric.begin(), metric.end()); // Lowest loss
-        return std::distance(metric.begin(), it);
-    }
-
   private:
+    // Return the test metrics (loss) for comparison
     const std::vector<Scalar>& get_metric() const {
         return test_metrics.loss;
     }
 
+    // Return the best test metric (lowest loss) for comparison
     Scalar get_best_metric() const {
         const auto& metric = get_metric();
-        return *std::min_element(metric.begin(), metric.end()); // Lowest loss
+        return *std::min_element(metric.begin(), metric.end());
     }
 };
