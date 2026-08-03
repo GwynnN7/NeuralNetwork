@@ -130,7 +130,7 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
         Matrix all_labels(train_labels.rows(), train_labels.cols() + test_labels.cols());
 
-        // Unify datasets to use my k-fold cross-validation function (use --innerk 0 and default args to use the original train/test split)
+        // Unify datasets to use my k-fold cross-validation function (use --inner-k 0 and default args to use the original train/test split)
         all_features << train_features, test_features;
         all_labels << train_labels, test_labels;
 

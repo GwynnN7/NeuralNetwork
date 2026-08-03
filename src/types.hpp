@@ -3,6 +3,9 @@
 #include <Eigen/Dense>
 #include <map>
 
+// Define a small epsilon value to avoid division by zero in calculations
+#define EPSILON 1e-8
+
 using Scalar = float;
 typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> Matrix;
 typedef Eigen::Vector<Scalar, Eigen::Dynamic> Vector;
@@ -21,6 +24,7 @@ enum class ActivationType {
 
 enum class OptimizerType {
     SGD,
+    RMSPROP,
     ADAM
 };
 
@@ -70,6 +74,7 @@ const std::map<InitType, std::string> init_to_str = {
 const std::map<OptimizerType, std::string> optimizer_to_str = {
     {OptimizerType::SGD, "SGD"},
     {OptimizerType::ADAM, "Adam"},
+    {OptimizerType::RMSPROP, "RMSProp"},
 };
 
 const std::map<DatasetType, std::string> dataset_to_str = {
@@ -93,7 +98,8 @@ const std::map<std::string, InitType> str_to_init{
 
 const std::map<std::string, OptimizerType> str_to_optimizer{
     {"sgd", OptimizerType::SGD},
-    {"adam", OptimizerType::ADAM}};
+    {"adam", OptimizerType::ADAM},
+    {"rmsprop", OptimizerType::RMSPROP}};
 
 const std::map<std::string, LossType> str_to_loss{
     {"mse", LossType::MSE},

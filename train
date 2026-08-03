@@ -15,8 +15,8 @@ fi
 # Training parameters
 
 EPOCHS=800
-INNER_K=3
-OUTER_K=3
+INNER_K=1
+OUTER_K=1
 
 DATASET_RATIO=1.0
 TRAIN_RATIO=0.8

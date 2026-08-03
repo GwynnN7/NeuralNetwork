@@ -110,7 +110,7 @@ void test(const Dataset& dataset, const Args& args) {
 }
 
 int main(int argc, char* argv[]) {
-    std::println("\n\n[Neural Network Training]");
+    std::println("\n\n[Gwynn7's Neural Network]");
 
     std::signal(SIGUSR1, handle_signal);
     Args args = Args::parse(argc, argv);

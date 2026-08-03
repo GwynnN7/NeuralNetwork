@@ -73,8 +73,7 @@ inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
 }
 
 inline Scalar bce(const Matrix& target, const Matrix& prediction) {
-    Scalar epsilon = 1e-8;
-    Matrix pred_clipped = prediction.cwiseMax(epsilon).cwiseMin(1.0 - epsilon);
+    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
     // f = -(1 / N) * sum(y * log(y*) + (1 - y) * log(1 - y*))
     return -(target.array() * pred_clipped.array().log() +
              (1.0 - target.array()) * (1.0 - pred_clipped.array()).log())
@@ -83,15 +82,13 @@ inline Scalar bce(const Matrix& target, const Matrix& prediction) {
 }
 
 inline Matrix bce_derivative(const Matrix& target, const Matrix& prediction) {
-    Scalar epsilon = 1e-8; // Avoid division by zero
-    Matrix pred_clipped = prediction.cwiseMax(epsilon).cwiseMin(1.0 - epsilon);
+    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
     // f' = (y* - y) / (y* * (1 - y*))
     return (pred_clipped - target).array() / (pred_clipped.array() * (1.0 - pred_clipped.array()));
 }
 
 inline Scalar cce(const Matrix& target, const Matrix& prediction) {
-    Scalar epsilon = 1e-8; // Avoid division by zero
-    Matrix pred_clipped = prediction.cwiseMax(epsilon).cwiseMin(1.0 - epsilon);
+    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
     // f = -(1 / N) * sum(y * log(y*))
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }

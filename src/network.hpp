@@ -29,6 +29,12 @@ class DenseLayer : public Layer {
         case OptimizerType::SGD:
             optimizer = std::make_unique<GradientDescent>(W.rows(), W.cols());
             break;
+        case OptimizerType::RMSPROP:
+            optimizer = std::make_unique<RMSProp>(W.rows(), W.cols());
+            break;
+        case OptimizerType::ADAM:
+            optimizer = std::make_unique<Adam>(W.rows(), W.cols());
+            break;
         default:
             throw std::invalid_argument("Unsupported optimizer type");
         }
