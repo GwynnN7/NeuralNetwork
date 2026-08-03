@@ -17,8 +17,8 @@ Args Args::parse(int argc, char* argv[]) {
     app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1);
     app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1);
 
-    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(500);
-    app.add_option("--patience", args.patience, "Patience for early stopping (0 = disabled)")->default_val(25);
+    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800);
+    app.add_option("--patience", args.patience, "Patience for early stopping (0 = disabled)")->default_val(60);
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
     app.add_flag("--dump", args.dump, "Dump best models' weights to file after total retraining")->default_val(false);
     app.add_flag("--train", args.train, "Train a new model")->default_val(false);

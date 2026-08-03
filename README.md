@@ -11,8 +11,10 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 * **Architecture Features**:
     * `L2 Weight Decay` ($\lambda$) and `Momentum` ($\alpha$).
     * `Batch`, `Mini-batch` and `Stochastic` update.
-    * `Gradient Descent` and `Adam` optimizer.
+    * `SGD`, `RMSProp` and `Adam` optimizers.
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
+    * `Linear Decay` of `Learning Rate`.
+    * `Early Stopping` with `Patience`.
 * **Datasets Supported**: `XOR`, `XOR_HOT`, and `MNIST`.
 * **Logging & Visualization**: 
     * `CSV` logging of per-fold loss and accuracy.
@@ -32,7 +34,7 @@ Network parameters are defined in a CSV file passed to the `--params` argument.
 | `hidden` | Activation function of the `hidden` layers | `ReLU`, `Sigmoid`, `Tanh` |
 | `output` | Activation function of the `output` layer  | `Sigmoid`, `Softmax`, `Linear` |
 | `init` | Initialization method of the weights| `Random`, `Lecun`, `Glorot`, `He` |
-| `opt` | Optimization method for the weights | `SGD` |
+| `opt` | Optimization method for the weights | `SGD`, `RMSProp`, `Adam` |
 | `loss` | Loss type for gradient calcuation | `MSE`, `BCE`, `CCE` |
 | `batch` | Batch size (use 0 for a single batch) | `int` |
 | `eta` | Learning rate of the network | `double` |
@@ -57,7 +59,8 @@ id,net,hidden,output,init,opt,batch,eta,lambda,alpha
 | `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
 | `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
-| `--epochs` | Maximum number of training epochs per fold | `500` |
+| `--epochs` | Maximum number of training epochs per fold | `800` |
+| `--patience` | Number of epochs to wait before checking for early stopping | `60` |
 | `--train_ratio`| Training set split ratio (when $K=1$) | `0.85` |
 | `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
 | `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |

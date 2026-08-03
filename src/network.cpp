@@ -234,6 +234,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
     // Early Stopping variables
     Scalar patience_loss = 0.0;
     int epochs_without_improvement = 0;
+    bool auto_early_stop_flag = false;
 
     // Logging and metrics variables
     SplitResults split_results;
@@ -300,8 +301,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
                 }
 
                 if (epochs_without_improvement >= patience) {
-                    std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
-                    break;
+                    auto_early_stop_flag = true;
                 }
 
             } else {
@@ -312,8 +312,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
                     patience_loss = split_results.train_metrics.loss[i - train_patience]; // Compare with loss from 'train_patience' epochs ago
                     Scalar progress = (patience_loss - train_loss) / (patience_loss + EPSILON);
                     if (progress < ES_TRAIN) {
-                        std::println("\n[Automatic Early stopping: Outer Fold {} | Epoch {}]", outer_index, i);
-                        break;
+                        auto_early_stop_flag = true;
                     }
                 }
             }
@@ -333,9 +332,13 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
             }
         }
 
-        if (early_stop_flag) {
-            std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
-            early_stop_flag = 0; // Reset the early stop flag for the next fold
+        if (early_stop_flag || auto_early_stop_flag) {
+            if (early_stop_flag) {
+                std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+                early_stop_flag = 0; // Reset the early stop flag for the next fold
+            } else {
+                std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+            }
             break;
         }
     }
