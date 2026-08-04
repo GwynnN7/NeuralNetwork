@@ -55,6 +55,12 @@ enum class InitType { RANDOM,
 
 enum class DatasetType { XOR,
                          XOR_HOT,
+                         MONK_1,
+                         MONK_1_HOT,
+                         MONK_2,
+                         MONK_2_HOT,
+                         MONK_3,
+                         MONK_3_HOT,
                          MNIST };
 
 namespace Maps {
@@ -93,7 +99,25 @@ const std::map<OptimizerType, std::string> optimizer_to_str = {
 const std::map<DatasetType, std::string> dataset_to_str = {
     {DatasetType::XOR, "XOR"},
     {DatasetType::XOR_HOT, "XOR_HOT"},
+    {DatasetType::MONK_1, "MONK_1"},
+    {DatasetType::MONK_1_HOT, "MONK_1_HOT"},
+    {DatasetType::MONK_2, "MONK_2"},
+    {DatasetType::MONK_2_HOT, "MONK_2_HOT"},
+    {DatasetType::MONK_3, "MONK_3"},
+    {DatasetType::MONK_3_HOT, "MONK_3_HOT"},
     {DatasetType::MNIST, "MNIST"},
+};
+
+const std::map<std::string, DatasetType> str_to_dataset{
+    {"xor", DatasetType::XOR},
+    {"xor_hot", DatasetType::XOR_HOT},
+    {"monk_1", DatasetType::MONK_1},
+    {"monk_1_hot", DatasetType::MONK_1_HOT},
+    {"monk_2", DatasetType::MONK_2},
+    {"monk_2_hot", DatasetType::MONK_2_HOT},
+    {"monk_3", DatasetType::MONK_3},
+    {"monk_3_hot", DatasetType::MONK_3_HOT},
+    {"mnist", DatasetType::MNIST},
 };
 
 const std::map<std::string, ActivationType> str_to_activation{

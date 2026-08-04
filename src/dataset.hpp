@@ -9,9 +9,10 @@ struct Dataset {
     TaskType task;
     Matrix features, labels;
     int num_samples, num_features, num_classes;
+    int original_num_train_samples; // Store the original number of training samples for datasets that have a predefined train/test split
 
-    Dataset(DatasetType type, TaskType task, const Matrix& features, const Matrix& labels)
-        : type(type), task(task), features(features), labels(labels) {
+    Dataset(DatasetType type, TaskType task, const Matrix& features, const Matrix& labels, int train_samples = 0)
+        : type(type), task(task), features(features), labels(labels), original_num_train_samples(train_samples) {
 
         num_samples = features.cols();
         num_features = features.rows();
@@ -32,5 +33,5 @@ struct DataSplit {
     std::vector<int> train_indices;
     std::vector<int> test_indices;
 
-    static std::vector<DataSplit> split(int num_samples, int k, Scalar train_ratio, bool shuffle = true);
+    static std::vector<DataSplit> split(int num_samples, int k, Scalar train_ratio, int original_train_samples, bool shuffle = true);
 };

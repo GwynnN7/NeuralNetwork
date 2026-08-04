@@ -12,7 +12,7 @@
 
 void train(const Dataset& dataset, const Args& args) {
     // Prepare outer folds for cross-validation and load the grid search parameters
-    const std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, args.shuffle);
+    const std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, dataset.original_num_train_samples, args.shuffle);
     std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
     std::map<int, Model> best_models;
 
@@ -21,8 +21,8 @@ void train(const Dataset& dataset, const Args& args) {
         // Keep track of the best model for the current outer fold
         SplitResults best_model_performance;
 
-        // Prepare inner folds for model selection, on training set of the current outer fold (train_valid)
-        std::vector<DataSplit> inner_folds = DataSplit::split(outer_folds[i].train_indices.size(), args.inner_folds, args.train_ratio, args.shuffle);
+        // Prepare inner folds for model selection, on training set of the current outer fold (train_valid). Pass original_train_samples as 0 for inner folds since it is only relevant for outer folds
+        std::vector<DataSplit> inner_folds = DataSplit::split(outer_folds[i].train_indices.size(), args.inner_folds, args.train_ratio, 0, args.shuffle);
         // Remap the inner fold indices to the original dataset indices
         for (auto& inner_fold : inner_folds) {
             for (int& relative_idx : inner_fold.train_indices) {
@@ -65,11 +65,11 @@ void train(const Dataset& dataset, const Args& args) {
     }
     if (args.dump) {
         std::print("\n[Dumping Best Models]");
-        // Dump the best models found with cross-validation,trained on the entire dataset
-        const DataSplit full_split = DataSplit::split(dataset.num_samples, 1, 1.0, args.shuffle).front(); // Create a single holdout split (k=1) containing the entire dataset (train_ratio=1.0)
+        // Dump the best models found with cross-validation, trained on the original train/test split (if applicable)
+        const DataSplit main_split = DataSplit::split(dataset.num_samples, 1, args.train_ratio, dataset.original_num_train_samples, args.shuffle).front();
         for (size_t i = 0; i < outer_folds.size(); ++i) {
             Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
-            final_network.train(dataset, full_split, args.epochs, args.patience, best_models[i].id, i, -1, false);
+            final_network.train(dataset, main_split, args.epochs, args.patience, best_models[i].id, i, -1, false);
             Serializer::dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], &final_network);
         }
     }
@@ -86,29 +86,26 @@ void test(const Dataset& dataset, const Args& args) {
             std::println(stderr, "Failed to load the model, skipping");
             continue;
         }
-        // Evaluate the model on the entire dataset with 5-fold split
-        const std::vector<DataSplit> splits = DataSplit::split(dataset.num_samples, 5, args.train_ratio, args.shuffle);
+        // Evaluate the model on the original train/test split (if applicable)
+        const DataSplit main_split = DataSplit::split(dataset.num_samples, 1, args.train_ratio, dataset.original_num_train_samples, args.shuffle).front();
+
         SplitResults results;
-        for (size_t i = 0; i < splits.size(); ++i) {
-            MetricsResult train_metrics, test_metrics;
+        MetricsResult train_metrics, test_metrics;
 
-            // Extract training and testing features and labels for the current split
-            Matrix train_features = dataset.features(Eigen::placeholders::all, splits[i].train_indices);
-            Matrix train_labels = dataset.labels(Eigen::placeholders::all, splits[i].train_indices);
-            Matrix test_features = dataset.features(Eigen::placeholders::all, splits[i].test_indices);
-            Matrix test_labels = dataset.labels(Eigen::placeholders::all, splits[i].test_indices);
+        // Extract training and testing features and labels for the current split
+        Matrix train_features = dataset.features(Eigen::placeholders::all, main_split.train_indices);
+        Matrix train_labels = dataset.labels(Eigen::placeholders::all, main_split.train_indices);
+        Matrix test_features = dataset.features(Eigen::placeholders::all, main_split.test_indices);
+        Matrix test_labels = dataset.labels(Eigen::placeholders::all, main_split.test_indices);
 
-            // Evaluate the model
-            Matrix final_train_predictions = network->predict(train_features);
-            Matrix final_test_predictions = network->predict(test_features);
+        // Evaluate the model
+        Matrix final_train_predictions = network->predict(train_features);
+        Matrix final_test_predictions = network->predict(test_features);
 
-            // Calculate metrics for the current split and accumulate them
-            train_metrics.append(train_labels, final_train_predictions, network->getLossFunction());
-            test_metrics.append(test_labels, final_test_predictions, network->getLossFunction());
-            results.add({train_metrics, test_metrics});
-        }
-        // Average the metrics across all splits and print the results
-        results.average();
+        // Calculate metrics for the split and print them
+        train_metrics.append(train_labels, final_train_predictions, network->getLossFunction());
+        test_metrics.append(test_labels, final_test_predictions, network->getLossFunction());
+        results.add({train_metrics, test_metrics});
         results.print(network->model.task);
     }
 }

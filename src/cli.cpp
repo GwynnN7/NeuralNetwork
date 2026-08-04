@@ -8,9 +8,7 @@
 Args Args::parse(int argc, char* argv[]) {
     Args args;
     CLI::App app{"Neural Network Training"};
-    app.add_option("dataset", args.dataset_type, "Dataset type")
-        ->transform(CLI::CheckedTransformer(std::map<std::string, DatasetType>{{"xor", DatasetType::XOR}, {"xor_hot", DatasetType::XOR_HOT}, {"mnist", DatasetType::MNIST}}, CLI::ignore_case))
-        ->required();
+    app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Maps::str_to_dataset, CLI::ignore_case))->required();
 
     app.add_option("--name", args.name, "Name for the model and log files")->default_val("model");
     app.add_option("--params", args.model_file, "File containing model parameters for grid search")->default_val("artifacts/grid.csv");

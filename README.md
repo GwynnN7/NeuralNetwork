@@ -15,7 +15,8 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
     * `Linear Decay` of `Learning Rate`.
     * `Early Stopping` with `Patience`.
-* **Datasets Supported**: `XOR`, `XOR_HOT`, and `MNIST`.
+* **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK_1(_HOT)`, `MONK_2(_HOT)`, `MONK_3(_HOT)`.
+    * The `_HOT` datasets are one-hot encoded versions of the original datasets.
 * **Logging & Visualization**: 
     * `CSV` logging of per-fold loss and accuracy.
     * `live_plot.py` script to visualize Loss and Accuracy curves.
@@ -105,7 +106,7 @@ Run a 2x2 nested K-fold cross-validation on 40% of the MNIST dataset, evaluating
     --name mnist_test \
     --train \
     --dump \
-    --params dataset/mnist/grid.csv \
+    --params grids/grid.csv \
     --dataset_ratio 0.4 \
     --inner-k 2 \
     --outer-k 2 \

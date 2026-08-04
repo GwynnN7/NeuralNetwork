@@ -29,9 +29,9 @@ if [ -n "$2" ]; then
     NAME="$2"
 fi
 
-GRID_FILE="dataset/$1/grid.csv"
+GRID_FILE="grids/grid.csv"
 if [ -n "$3" ]; then
-    GRID_FILE="dataset/$1/$3.csv"
+    GRID_FILE="grids/$3.csv"
 fi
 
 clear
