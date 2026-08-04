@@ -37,14 +37,19 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
     }
 
     // Initialize weights and biases pre-transposed for more efficient matrix multiplication later on
+    W = Matrix::Zero(output_size, input_size);
     switch (init_type) {
     case InitType::HE: {
         std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
-        W = Matrix::NullaryExpr(output_size, input_size, [&]() { return normal_dist(get_random_generator()); });
+        for (int i = 0; i < W.size(); ++i) {
+            W(i) = normal_dist(get_random_generator());
+        }
     } break;
     default: {
         std::uniform_real_distribution<Scalar> uniform_dist(-distribution_value, distribution_value);
-        W = Matrix::NullaryExpr(output_size, input_size, [&]() { return uniform_dist(get_random_generator()); });
+        for (int i = 0; i < W.size(); ++i) {
+            W(i) = uniform_dist(get_random_generator());
+        }
     } break;
     }
 
@@ -255,16 +260,26 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         Scalar gamma = std::min(static_cast<Scalar>(1.0), static_cast<Scalar>(i / tau));
         model.eta = (1.0 - gamma) * initial_eta + (gamma * target_eta);
 
+        // Pre-allocate matrices for the current batch to avoid reallocating memory in each iteration
+        Matrix batch_features(dataset.num_features, current_batch_size);
+        Matrix batch_labels(dataset.num_classes, current_batch_size);
+
         MetricsResult batch_metrics;
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
-            // Determine the start and end indices for the current batch
+            // Determine the startint index and size for the current batch
             const int index_start = j * current_batch_size;
-            const int index_end = std::min(index_start + current_batch_size, input_size);
+            const int actual_batch_size = std::min(index_start + current_batch_size, input_size) - index_start;
 
-            // Extract the current batch of features and labels
-            std::vector<int> batch_indices(epoch_indices.begin() + index_start, epoch_indices.begin() + index_end);
-            Matrix batch_features = dataset.features(Eigen::placeholders::all, batch_indices);
-            Matrix batch_labels = dataset.labels(Eigen::placeholders::all, batch_indices);
+            if (actual_batch_size != batch_features.cols()) {
+                // Shrink the pre-allocated matrices for the final batch
+                batch_features.conservativeResize(Eigen::NoChange, actual_batch_size);
+                batch_labels.conservativeResize(Eigen::NoChange, actual_batch_size);
+            }
+
+            // Extract the current batch of features and labels (assign without reallocating)
+            std::vector<int> batch_indices(epoch_indices.begin() + index_start, epoch_indices.begin() + index_start + actual_batch_size);
+            batch_features.noalias() = dataset.features(Eigen::placeholders::all, batch_indices);
+            batch_labels.noalias() = dataset.labels(Eigen::placeholders::all, batch_indices);
 
             // Forward pass to get predictions for the current batch
             Matrix batch_prediction = predict(batch_features, true);
@@ -290,31 +305,16 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
 
         // Early stopping logic based on the patience parameter
         if (patience > 0) {
-            if (in_model_selection) {
-                // Use validation loss (that stopped decreasing) for early stopping during model selection (using patience)
-                Scalar test_loss = split_results.test_metrics.loss.back();
-                if (i == 0 || test_loss < patience_loss) {
-                    epochs_without_improvement = 0;
-                    patience_loss = test_loss;
-                } else {
-                    epochs_without_improvement++;
-                }
-
-                if (epochs_without_improvement >= patience) {
-                    auto_early_stop_flag = true;
-                }
-
+            Scalar current_loss = in_model_selection ? split_results.test_metrics.loss.back() : split_results.train_metrics.loss.back();
+            if (i == 0 || current_loss < patience_loss - (in_model_selection ? 0.0 : ES_TRAIN)) { // Use a small threshold for training loss to avoid stopping too early due to minor fluctuations
+                epochs_without_improvement = 0;
+                patience_loss = current_loss;
             } else {
-                // Use training loss (that stopped decreasing significantly) for early stopping during final training (using patience)
-                Scalar train_loss = split_results.train_metrics.loss.back();
-                int train_patience = std::max(5, patience / 2); // Use a smaller patience for this method
-                if (i > train_patience) {
-                    patience_loss = split_results.train_metrics.loss[i - train_patience]; // Compare with loss from 'train_patience' epochs ago
-                    Scalar progress = (patience_loss - train_loss) / (patience_loss + EPSILON);
-                    if (progress < ES_TRAIN) {
-                        auto_early_stop_flag = true;
-                    }
-                }
+                epochs_without_improvement++;
+            }
+
+            if (epochs_without_improvement >= patience) {
+                auto_early_stop_flag = true;
             }
         }
         if (logging && log_file.is_open()) {

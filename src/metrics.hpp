@@ -66,21 +66,36 @@ struct MetricsResult {
         occurrences.insert(occurrences.end(), other.occurrences.begin(), other.occurrences.end());
     }
 
-    // Add metrics from another MetricsResult instance, accumulating values for the same epochs
+    // Add metrics from another MetricsResult instance, accumulating/aligning values for the same epochs
     void add(const MetricsResult& other) {
-        for (size_t i = 0; i < other.loss.size(); ++i) {
-            if (i < loss.size()) {
-                loss[i] += other.loss[i];
-                accuracy[i] += other.accuracy[i];
-                occurrences[i] += other.occurrences[i];
-            } else {
-                loss.push_back(other.loss[i]);
-                accuracy.push_back(other.accuracy[i]);
-                occurrences.push_back(other.occurrences[i]);
-            }
+        if (other.loss.empty()) {
+            return; // Nothing to add
+        }
+        if (loss.empty()) {
+            *this = other; // First fold simply initializes the accumulator
+            return;
+        }
+
+        size_t max_size = std::max(loss.size(), other.loss.size());
+
+        // Pad with last value if this fold stopped earlier than 'other'
+        while (loss.size() < max_size) {
+            loss.push_back(loss.back());
+            accuracy.push_back(accuracy.back());
+            occurrences.push_back(occurrences.back());
+        }
+
+        for (size_t i = 0; i < max_size; ++i) {
+            // Use the last value if 'other' fold stopped earlier than this, otherwise use the corresponding value
+            Scalar add_loss = (i < other.loss.size()) ? other.loss[i] : other.loss.back();
+            Scalar add_acc = (i < other.accuracy.size()) ? other.accuracy[i] : other.accuracy.back();
+
+            // Add the metrics from 'other' to this instance
+            loss[i] += add_loss;
+            accuracy[i] += add_acc;
+            occurrences[i] += 1;
         }
     }
-
     // Add metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function, accumulating values for the same epochs
     void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
         Scalar batch_loss = loss_func(target, prediction);

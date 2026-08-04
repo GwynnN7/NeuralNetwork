@@ -139,7 +139,7 @@ void dump_model(const std::string& file, const Model& model, Network* network) {
     }
 }
 
-Network* load_model(const std::string& file, const Dataset& dataset) {
+std::unique_ptr<Network> load_model(const std::string& file, const Dataset& dataset) {
     std::ifstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
         std::println(stderr, "Failed to open {} for reading.", file);
@@ -192,6 +192,6 @@ Network* load_model(const std::string& file, const Dataset& dataset) {
     }
 
     // Create a new Network instance using the loaded model and weights/biases
-    return new Network(model, layers_weights, layers_biases);
+    return std::make_unique<Network>(model, layers_weights, layers_biases);
 }
 } // namespace Serializer

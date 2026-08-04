@@ -12,7 +12,7 @@
 
 void train(const Dataset& dataset, const Args& args) {
     // Prepare outer folds for cross-validation and load the grid search parameters
-    const std::vector<DataSplit> outer_folds = DataSplit::split(dataset.num_samples, args.outer_folds, args.train_ratio, dataset.original_num_train_samples, args.shuffle);
+    const std::vector<DataSplit> outer_folds = DataSplit::split(args.outer_folds, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle);
     std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
     std::map<int, Model> best_models;
 
@@ -22,7 +22,7 @@ void train(const Dataset& dataset, const Args& args) {
         SplitResults best_model_performance;
 
         // Prepare inner folds for model selection, on training set of the current outer fold (train_valid). Pass original_train_samples as 0 for inner folds since it is only relevant for outer folds
-        std::vector<DataSplit> inner_folds = DataSplit::split(outer_folds[i].train_indices.size(), args.inner_folds, args.train_ratio, 0, args.shuffle);
+        std::vector<DataSplit> inner_folds = DataSplit::split(args.inner_folds, args.train_ratio, 0, outer_folds[i].train_indices.size(), args.shuffle);
         // Remap the inner fold indices to the original dataset indices
         for (auto& inner_fold : inner_folds) {
             for (int& relative_idx : inner_fold.train_indices) {
@@ -66,7 +66,7 @@ void train(const Dataset& dataset, const Args& args) {
     if (args.dump) {
         std::print("\n[Dumping Best Models]");
         // Dump the best models found with cross-validation, trained on the original train/test split (if applicable)
-        const DataSplit main_split = DataSplit::split(dataset.num_samples, 1, args.train_ratio, dataset.original_num_train_samples, args.shuffle).front();
+        const DataSplit main_split = DataSplit::split(1, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle).front();
         for (size_t i = 0; i < outer_folds.size(); ++i) {
             Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
             final_network.train(dataset, main_split, args.epochs, args.patience, best_models[i].id, i, -1, false);
@@ -87,7 +87,7 @@ void test(const Dataset& dataset, const Args& args) {
             continue;
         }
         // Evaluate the model on the original train/test split (if applicable)
-        const DataSplit main_split = DataSplit::split(dataset.num_samples, 1, args.train_ratio, dataset.original_num_train_samples, args.shuffle).front();
+        const DataSplit main_split = DataSplit::split(1, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle).front();
 
         SplitResults results;
         MetricsResult train_metrics, test_metrics;

@@ -1,4 +1,0 @@
-id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha
-0,128-64,sigmoid,sigmoid,glorot,sgd,mse,256,0.001,0.0001,0.9
-1,128-64,sigmoid,sigmoid,glorot,rmsprop,mse,256,0.001,0.0001,0.9
-2,128-64,sigmoid,sigmoid,glorot,adam,mse,256,0.001,0.0001,0.9

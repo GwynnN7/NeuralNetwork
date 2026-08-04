@@ -3,6 +3,7 @@
 #include "types.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
@@ -25,6 +26,13 @@ inline std::mt19937& get_random_generator() {
 
 inline void set_random_seed(unsigned int seed) {
     get_random_generator().seed(seed);
+}
+
+inline int swap_endian(int value) {
+    if constexpr (std::endian::native == std::endian::little) {
+        return std::byteswap(value);
+    }
+    return value;
 }
 
 inline void print_random_samples(Matrix& target, Matrix& predictions) {

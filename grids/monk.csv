@@ -1,0 +1,8 @@
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha
+0,16,relu,sigmoid,he,adam,bce,32,0.005,0.0,0.0
+1,16,relu,sigmoid,he,adam,mse,32,0.005,0.0,0.0
+2,16,relu,linear,he,adam,mse,32,0.005,0.0,0.0
+3,16,tanh,sigmoid,glorot,sgd,bce,32,0.1,0.0,0.9
+4,16,tanh,sigmoid,glorot,sgd,mse,32,0.1,0.0,0.9
+5,32-16,sigmoid,sigmoid,glorot,rmsprop,bce,64,0.01,0.0,0.9
+6,32-16,sigmoid,sigmoid,glorot,rmsprop,mse,64,0.01,0.0,0.9

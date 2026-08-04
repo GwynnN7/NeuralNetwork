@@ -1,3 +1,5 @@
-id,net,hidden,output,init,opt,loss,batch_size,eta,lambda,alpha
-0,4,sigmoid,sigmoid,glorot,sgd,mse,4,0.1,0,0.8
-1,4,tanh,sigmoid,lecun,sgd,mse,4,0.1,0,0.8
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha
+0,4,tanh,linear,glorot,sgd,mse,0,0.1,0.0,0.9
+1,8-4,relu,linear,he,adam,mse,0,0.01,0.0,0.0
+2,4,sigmoid,sigmoid,glorot,rmsprop,mse,0,0.05,0.0,0.9
+3,8,relu,linear,he,sgd,mse,0,0.05,0.0001,0.9

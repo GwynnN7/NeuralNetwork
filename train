@@ -45,6 +45,11 @@ booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --train --shuffle \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K --epochs $EPOCHS --patience $PATIENCE &
 
+live_plot=$(python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &)
+best_model=$(python3 ./scripts/best_model.py "$NAME" >/dev/null 2>&1 &)
+
+$live_plot
+
 while true; do
     if read -t 1 -n 1 -s key; then
         PID=$(pgrep "NeuralNet" | head -n 1)
@@ -55,9 +60,9 @@ while true; do
         if [[ $key == "1" ]]; then
             kill -SIGUSR1 "$PID"
         elif [[ $key == "2" ]]; then
-            python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &
+            $live_plot
         elif [[ $key == "3" ]]; then
-            python3 ./scripts/best_model.py "$NAME" >/dev/null 2>&1 &
+            $best_model
         elif [[ $key == "4" ]]; then
             kill -SIGINT "$PID"
         fi
@@ -67,4 +72,4 @@ while true; do
     fi
 done
 
-nohup python3 ./scripts/best_model.py "$NAME" >/dev/null 2>&1 &
+$best_model

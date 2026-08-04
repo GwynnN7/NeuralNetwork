@@ -3,21 +3,6 @@
 #include <Eigen/Dense>
 #include <map>
 
-// Define a small epsilon value to avoid division by zero in calculations
-#define EPSILON 1e-8
-// Define a small threshold for early stopping based on training loss progress
-#define ES_TRAIN 0.001
-// Define the frequency of logging metrics to a file during training
-#define LOG_FREQ 25
-// Define a multiplier for the target learning rate in linear decay
-#define TARGET_ETA_MULTIPLIER 0.01
-// Define a multiplier for the tau parameter in linear learning rate decay
-#define TAU_MULTIPLIER 0.8
-// Define the number of hyperparameters expected in the CSV file for model selection
-#define HYPERPARAMS_NUM 11
-// Define the beta2 parameter for the Adam optimizer
-#define ADAM_B2 0.999
-
 // Define types alias for Scalar and commonly used Matrix, Vector and function types
 using Scalar = float;
 typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> Matrix;
@@ -26,6 +11,21 @@ typedef Eigen::Vector<Scalar, Eigen::Dynamic> Vector;
 typedef std::function<Scalar(const Matrix&, const Matrix&)> LossFunction;
 typedef std::function<Matrix(const Matrix&, const Matrix&)> LossDerivative;
 typedef std::function<Matrix(const Matrix&)> ActivationFunction;
+
+// Define a small epsilon value to avoid division by zero in calculations
+inline constexpr Scalar EPSILON = 1e-8;
+// Define a small threshold for early stopping based on training loss progress
+inline constexpr Scalar ES_TRAIN = 0.001;
+// Define the frequency of logging metrics to a file during training
+inline constexpr int LOG_FREQ = 25;
+// Define a multiplier for the target learning rate in linear decay
+inline constexpr Scalar TARGET_ETA_MULTIPLIER = 0.01;
+// Define a multiplier for the tau parameter in linear learning rate decay
+inline constexpr Scalar TAU_MULTIPLIER = 0.8;
+// Define the number of hyperparameters expected in the CSV file for model selection
+inline constexpr int HYPERPARAMS_NUM = 11;
+// Define the beta2 parameter for the Adam optimizer
+inline constexpr Scalar ADAM_B2 = 0.999;
 
 enum class ActivationType {
     RELU,

@@ -31,5 +31,5 @@ class Network; // Forward declaration to avoid circular dependency
 
 namespace Serializer {
 void dump_model(const std::string& file, const Model& model, Network* network);
-Network* load_model(const std::string& file, const Dataset& dataset);
+std::unique_ptr<Network> load_model(const std::string& file, const Dataset& dataset);
 } // namespace Serializer
