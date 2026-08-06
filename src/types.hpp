@@ -1,30 +1,48 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <functional>
+#include <limits>
 #include <map>
+#include <string>
+
+// Use the NN_DOUBLE_PRECISION CMake option for double precision
+#ifndef SCALAR_TYPE
+#define SCALAR_TYPE float
+#endif
 
 // Define types alias for Scalar and commonly used Matrix, Vector and function types
-using Scalar = float;
-typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> Matrix;
-typedef Eigen::Vector<Scalar, Eigen::Dynamic> Vector;
+using Scalar = SCALAR_TYPE;
+using Matrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
+using Vector = Eigen::Vector<Scalar, Eigen::Dynamic>;
 
-typedef std::function<Scalar(const Matrix&, const Matrix&)> LossFunction;
-typedef std::function<Matrix(const Matrix&, const Matrix&)> LossDerivative;
-typedef std::function<Matrix(const Matrix&)> ActivationFunction;
+using LossFunction = std::function<Scalar(const Matrix&, const Matrix&)>;
+using LossDerivative = std::function<Matrix(const Matrix&, const Matrix&)>;
+using ActivationFunction = std::function<Matrix(const Matrix&)>;
 
-// Define a small epsilon value to avoid division by zero in calculations
+// Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
-// Define a small threshold for early stopping based on training loss progress
-inline constexpr Scalar ES_TRAIN = 0.001;
+// Define a small epsilon value to avoid log(0) in loss functions (that works for both float and double, *8 is a safety for single precision)
+inline constexpr Scalar LOSS_EPS = std::numeric_limits<Scalar>::epsilon() * 8;
+
+// Define a relative tolerance for early stopping
+inline constexpr Scalar ES_REL_TOL = 0.001;
 // Define the frequency of logging metrics to a file during training
 inline constexpr int LOG_FREQ = 25;
+// Sliding window to score models during model selection
+inline constexpr int SELECTION_WINDOW = 20;
+
 // Define a multiplier for the target learning rate in linear decay
 inline constexpr Scalar TARGET_ETA_MULTIPLIER = 0.01;
 // Define a multiplier for the tau parameter in linear learning rate decay
 inline constexpr Scalar TAU_MULTIPLIER = 0.8;
-// Define the number of hyperparameters expected in the CSV file for model selection
+
+// Number of hyperparameter columns required in the grid-search CSV. 12th column (beta1) is optional and defaults to ADAM_B1
 inline constexpr int HYPERPARAMS_NUM = 11;
-// Define the beta2 parameter for the Adam optimizer
+inline constexpr int HYPERPARAMS_NUM_OPT = 12;
+
+// Default beta1/beta2 parameters for the Adam optimizer
+inline constexpr Scalar ADAM_B1 = 0.9;
 inline constexpr Scalar ADAM_B2 = 0.999;
 
 enum class ActivationType {
