@@ -32,12 +32,14 @@ void train(const Dataset& dataset, const Args& args) {
                 relative_idx = outer_folds[i].train_indices[relative_idx];
             }
         }
+        bool model_selection = inner_folds.size() > 0 && grid_search.size() > 1; // Determine if model selection is needed
         // Inner loop for model selection
         for (auto& grid_model : grid_search) {
             grid_model.task = dataset.task;         // Assign the task type to the model based on the dataset
+            grid_model.print();                     // Print the model configuration for logging
             SplitResults current_model_performance; // Metrics for the current model across inner folds
             // Loop through inner folds if in model selection
-            for (size_t j = 0; j < inner_folds.size() && grid_search.size() > 1; ++j) {
+            for (size_t j = 0; model_selection && j < inner_folds.size(); ++j) {
                 // Create a new network for the current model configuration
                 Network network(grid_model, dataset.num_features, dataset.num_classes);
 
@@ -54,6 +56,10 @@ void train(const Dataset& dataset, const Args& args) {
             }
         }
 
+        if (model_selection) {
+            std::println("\nRetraining the best model for Outer Fold {}: Model {}", i, best_models[i].id);
+            best_models[i].print();
+        }
         // (Re)Train the best model of each outer fold on the train(_valid) set
         Network best_fold_network = Network(best_models[i], dataset.num_features, dataset.num_classes);
         best_fold_network.train(dataset, outer_folds[i], args.epochs, args.patience, best_models[i].id, i, -1); // Pass -1 for inner_index to indicate no model selection during final training

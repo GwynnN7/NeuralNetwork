@@ -59,6 +59,22 @@ struct MetricsResult {
         occurrences.push_back(1);
     }
 
+    // Add metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function, accumulating values for the same epochs
+    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
+        Scalar batch_loss = loss_func(target, prediction);
+        Scalar batch_accuracy = Metrics::classification_accuracy(target, prediction);
+
+        // If this is the first epoch, initialize the metrics
+        if (loss.empty()) {
+            append(target, prediction, loss_func);
+            return;
+        }
+
+        loss.back() += batch_loss;
+        accuracy.back() += batch_accuracy;
+        occurrences.back() += 1;
+    }
+
     // Append metrics from another MetricsResult instance
     void append(const MetricsResult& other) {
         loss.insert(loss.end(), other.loss.begin(), other.loss.end());
@@ -95,21 +111,6 @@ struct MetricsResult {
             accuracy[i] += add_acc;
             occurrences[i] += 1;
         }
-    }
-    // Add metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function, accumulating values for the same epochs
-    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
-        Scalar batch_loss = loss_func(target, prediction);
-        Scalar batch_accuracy = Metrics::classification_accuracy(target, prediction);
-
-        // If this is the first epoch, initialize the metrics
-        if (loss.empty()) {
-            append(target, prediction, loss_func);
-            return;
-        }
-
-        loss.back() += batch_loss;
-        accuracy.back() += batch_accuracy;
-        occurrences.back() += 1;
     }
 
     // Average the accumulated metrics for each epoch using the number of occurrences
@@ -158,7 +159,7 @@ struct SplitResults {
         if (get_metric().empty())
             return false;
 
-        return get_best_metric() < other.get_best_metric();
+        return get_minimum_max_loss() < other.get_minimum_max_loss();
     }
 
   private:
@@ -167,9 +168,33 @@ struct SplitResults {
         return test_metrics.loss;
     }
 
-    // Return the best test metric (lowest loss) for comparison
-    Scalar get_best_metric() const {
+    // Return the lowest test loss for comparison
+    Scalar get_lowest_loss() const {
         const auto& metric = get_metric();
         return *std::min_element(metric.begin(), metric.end());
+    }
+
+    // Return the lowest maximum test loss over a sliding windowfor comparison
+    Scalar get_minimum_max_loss() const {
+        const auto& metric = get_metric();
+        const size_t window_size = 20;
+
+        // If the metric size is less than the window size, return the lowest loss
+        if (metric.size() < window_size) {
+            return get_lowest_loss();
+        }
+
+        Scalar best_window_score = std::numeric_limits<Scalar>::infinity();
+        // Iterate with a sliding window of size 'window_size'
+        for (size_t i = 0; i <= metric.size() - window_size; ++i) {
+            // Find the maximum loss in the current window
+            Scalar window_max = *std::max_element(metric.begin() + i, metric.begin() + i + window_size);
+            // Update the best window score if the current window's maximum is lower
+            if (window_max < best_window_score) {
+                best_window_score = window_max;
+            }
+        }
+
+        return best_window_score;
     }
 };

@@ -205,9 +205,6 @@ Matrix Network::predict(const Matrix& out, bool training) {
 
 // Train the network using the dataset provided by the model_set
 SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, int epochs, int patience, int model_index, int outer_index, int inner_index, bool logging) {
-    if (outer_index == 0 && inner_index == 0) {
-        model.print();
-    }
     bool in_model_selection = inner_index != -1; // if there are no inner folds, then we are not in model selection mode
 
     // File logging handling
@@ -295,6 +292,13 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         }
         split_results.train_metrics.append(batch_metrics);
 
+        // Check for NaN or Inf in the latest training loss to stop training
+        Scalar latest_train_loss = split_results.train_metrics.loss.back();
+        if (std::isnan(latest_train_loss) || std::isinf(latest_train_loss)) {
+            std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+            break;
+        }
+
         if ((patience > 0 && in_model_selection) || logging) {
             // Evaluate the model on the test set and calculate the loss and accuracy
             Matrix test_prediction = predict(test_features);
@@ -335,14 +339,13 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         if (early_stop_flag || auto_early_stop_flag) {
             if (early_stop_flag) {
                 std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
-                early_stop_flag = 0; // Reset the early stop flag for the next fold
             } else {
                 std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
             }
             break;
         }
     }
-
+    early_stop_flag = 0; // Reset the early stop flag for the next fold
     if (log_file.is_open()) {
         log_file.close();
     }

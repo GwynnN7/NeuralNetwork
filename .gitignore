@@ -66,6 +66,7 @@ vcpkg_installed/
 
 # test output & cache
 Testing/
+testing/
 .cache/
 artifacts/
 

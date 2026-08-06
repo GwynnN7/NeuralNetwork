@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.18)
 project(NeuralNet LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)
@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS False)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
-
 
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(OpenMP REQUIRED)
@@ -34,11 +33,12 @@ if(ipo_supported)
 endif()
 
 target_include_directories(NeuralNet PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(NeuralNet PRIVATE Eigen3::Eigen CLI11::CLI11 OpenMP::OpenMP_CXX ${BLAS_LIBRARIES})
+
+target_link_libraries(NeuralNet PRIVATE Eigen3::Eigen CLI11::CLI11 OpenMP::OpenMP_CXX BLAS::BLAS)
 
 target_compile_definitions(NeuralNet PRIVATE EIGEN_USE_BLAS)
 
 target_compile_options(NeuralNet PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>
-    $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3 -march=native -ffast-math>
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
+    $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3 -march=native>
 )
