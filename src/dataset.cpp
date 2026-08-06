@@ -19,6 +19,13 @@ namespace Loader {
 namespace MNIST {
 constexpr int MNIST_IMAGE_MAGIC = 2051;
 constexpr int MNIST_LABEL_MAGIC = 2049;
+// MNIST files are big-endian, need to swap on little-endian systems
+std::int32_t swap_endian(std::int32_t value) {
+    if constexpr (std::endian::native == std::endian::little) {
+        return static_cast<std::int32_t>(std::byteswap(static_cast<std::uint32_t>(value)));
+    }
+    return value;
+}
 // Read exactly 'bytes' bytes from the input stream
 void read_exact(std::istream& in, void* dest, std::size_t bytes, const std::string& path, const char* action) {
     in.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(bytes));
@@ -39,13 +46,6 @@ int sample_subset(int total, Scalar dataset_ratio) {
     }
     const int scaled = static_cast<int>(total * dataset_ratio);
     return std::max(1, std::min(scaled, total));
-}
-// MNIST files are big-endian, need to swap on little-endian systems
-std::int32_t swap_endian(std::int32_t value) {
-    if constexpr (std::endian::native == std::endian::little) {
-        return static_cast<std::int32_t>(std::byteswap(static_cast<std::uint32_t>(value)));
-    }
-    return value;
 }
 } // namespace MNIST
 
