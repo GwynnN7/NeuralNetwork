@@ -5,146 +5,57 @@
 #include "types.hpp"
 #include "utility.hpp"
 
+#include <cmath>
 #include <fstream>
 #include <functional>
 #include <memory>
 #include <print>
-#include <random>
 #include <string>
 #include <vector>
 
-// -- DenseLayer class implementation --
-
-// DenseLayer constructor that initializes weights based on the specified initialization type
-DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type) {
-    // Determine the distribution value based on the initialization type
-    Scalar distribution_value;
-    switch (init_type) {
-    case InitType::RANDOM:
-        distribution_value = 1.0;
-        break;
-    case InitType::LECUN:
-        distribution_value = std::sqrt(1.0 / static_cast<Scalar>(input_size));
-        break;
-    case InitType::GLOROT:
-        distribution_value = std::sqrt(6.0 / static_cast<Scalar>(input_size + output_size));
-        break;
-    case InitType::HE:
-        distribution_value = std::sqrt(2.0 / static_cast<Scalar>(input_size));
-        break;
-    default:
-        throw std::invalid_argument("Unsupported initialization type");
-    }
-
-    // Initialize weights and biases pre-transposed for more efficient matrix multiplication later on
-    W = Matrix::Zero(output_size, input_size);
-    switch (init_type) {
-    case InitType::HE: {
-        std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
-        for (int i = 0; i < W.size(); ++i) {
-            W(i) = normal_dist(get_random_generator());
-        }
-    } break;
-    default: {
-        std::uniform_real_distribution<Scalar> uniform_dist(-distribution_value, distribution_value);
-        for (int i = 0; i < W.size(); ++i) {
-            W(i) = uniform_dist(get_random_generator());
-        }
-    } break;
-    }
-
-    setOptimizer(opt_type);
-    b = Vector::Zero(output_size);
-}
-
-// Forward pass through the DenseLayer, saving input and output for backpropagation
-Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
-    if (W.cols() != input_matrix.rows()) {
-        throw std::runtime_error("Dimension mismatch: " + std::to_string(W.cols()) + " features expected, but " + std::to_string(input_matrix.rows()) + " features provided");
-    }
-    Matrix output_matrix = (W * input_matrix).colwise() + b; // Multiply weights with input and add bias
-    if (training) {
-        X = input_matrix, Y = output_matrix; // Store input and output for backpropagation
-    }
-    return output_matrix;
-}
-
-// Backward pass through the DenseLayer, updating weights and biases based on the output gradient
-Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model) {
-    Matrix weights_delta = (output_gradient * X.transpose()) / X.cols(); // Calculate the delta of weights (average over the batch)
-    Vector bias_delta = output_gradient.rowwise().sum() / X.cols();      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
-    Matrix input_gradient = W.transpose() * output_gradient;             // Calculate the neuron gradient to propagate to the previous layer
-
-    // Update weights and biases using the optimizer
-    optimizer->update(W, b, weights_delta, bias_delta, model);
-
-    return input_gradient;
-}
-
-// -- ActivationLayer class implementation --
-
-// ActivationLayer constructor that initializes the activation function and its derivative based on the specified ActivationType
-ActivationLayer::ActivationLayer(ActivationType activationType) {
-    try {
-        activation = Maps::activation_map.at(activationType).first;
-        activation_derivative = Maps::activation_map.at(activationType).second;
-    } catch (const std::out_of_range&) {
-        throw std::invalid_argument("Unsupported activation function type");
-    }
-}
-
-// Forward pass through the ActivationLayer, applying the activation function to the input matrix
-Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
-    Matrix output_matrix = activation(input_matrix); // Call the activation function on the input matrix
-    if (training) {
-        X = input_matrix, Y = output_matrix; // Store input and output for backpropagation
-    }
-    return output_matrix;
-}
-
-// Backward pass through the ActivationLayer, calculating the gradient with respect to the input
-Matrix ActivationLayer::backward(const Matrix& output_gradient, [[maybe_unused]] const Model& model) {
-    Matrix derivative = activation_derivative(X);    // Calculate the derivative of the activation function with respect to the input
-    return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
-}
-
-// -- Network class implementation --
-
-// Network constructor that initializes args and sets the loss function
-Network::Network(const Model& model) {
-    this->model = model;
+// Network constructor that initializes model parameters and sets the loss function
+Network::Network(const Model& model) : model(model) {
     setLossFunction(model.loss_type);
 }
 
-// Network constructor that initializes pairs of DenseLayer and ActivationLayer based on the defined network structure
-Network::Network(const Model& model, const int num_features, const int num_classes) : Network(model) {
-    for (size_t i = 0; i < model.net_struct.size(); ++i) {
-        int input_features = i == 0 ? num_features : model.net_struct[i - 1];
-        int num_neurons = model.net_struct[i];
-
-        // Add a DenseLayer and an ActivationLayer for each layer in the network structure
-        addLayer(std::make_unique<DenseLayer>(input_features, num_neurons, model.init_type, model.opt_type));
-        addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
-    }
-    // Add the final output layer with the specified number of classes and output activation
-    addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
-    addLayer(std::make_unique<ActivationLayer>(model.output_activation));
-
-    validateNetworkStructure(num_classes);
+// Network constructor that calls the layers building function with the specified number of features and classes
+Network::Network(const Model& model, int num_features, int num_classes) : Network(model) {
+    buildLayers(model, num_features, num_classes, nullptr, nullptr, true);
 }
 
-// Network constructor that initializes pairs of DenseLayer and ActivationLayer with loaded weights and biases
-Network::Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases) : Network(model) {
+// Network constructor that calls the layers building function with the specified weights and biases for each layer
+Network::Network(const Model& model, const std::vector<Matrix>& weights, const std::vector<Vector>& biases, bool instantiate_optimizer) : Network(model) {
+    if (weights.size() != biases.size() || weights.size() != model.net_struct.size() + 1) {
+        throw std::invalid_argument("Mismatch between the number of weights, biases, and layers in the model");
+    }
+    buildLayers(model, static_cast<int>(weights.front().cols()), static_cast<int>(weights.back().rows()), &weights, &biases, instantiate_optimizer);
+}
+
+// Function that builds each layer of the network, both loaded and initialized
+void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Matrix>* weights, const std::vector<Vector>* biases, bool instantiate_optimizer) {
+    validateModel(model, num_features, num_classes);
+
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
-        // Add a DenseLayer and an ActivationLayer for each layer in the network structure with loaded weights and biases
-        addLayer(std::make_unique<DenseLayer>(weights[i], biases[i], model.opt_type));
+        // Add a DenseLayer and an ActivationLayer for each layer in the network structure
+        if (weights != nullptr) {
+            addLayer(std::make_unique<DenseLayer>((*weights)[i], (*biases)[i], model.opt_type, instantiate_optimizer));
+        } else {
+            const int input_features = (i == 0) ? num_features : model.net_struct[i - 1];
+            addLayer(std::make_unique<DenseLayer>(input_features, model.net_struct[i], model.init_type, model.opt_type));
+        }
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
     }
-    // Add the final output layer with the specified number of classes and output activation with loaded weights and biases
-    addLayer(std::make_unique<DenseLayer>(weights.back(), biases.back(), model.opt_type));
-    addLayer(std::make_unique<ActivationLayer>(model.output_activation));
 
-    validateNetworkStructure(weights.back().rows());
+    // Add the final output layer with the specified number of classes and output activation
+    if (weights != nullptr) {
+        addLayer(std::make_unique<DenseLayer>(weights->back(), biases->back(), model.opt_type, instantiate_optimizer));
+    } else {
+        addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
+    }
+
+    // Add the output activation layer. Only this layer can have its derivative handled by the loss
+    const bool derivative_in_loss = LossFunctions::includes_output_derivative(model.loss_type);
+    addLayer(std::make_unique<ActivationLayer>(model.output_activation, derivative_in_loss));
 }
 
 // Utility function to set the loss function and its derivative based on the specified LossType
@@ -157,15 +68,24 @@ void Network::setLossFunction(LossType lossType) {
     }
 }
 
-void Network::validateNetworkStructure(int num_classes) const {
-    if (layers.empty()) {
-        throw std::invalid_argument("Network is empty");
+// Reject invalid configurations of the network
+void Network::validateModel(const Model& model, int num_features, int num_classes) {
+    if (model.net_struct.empty()) {
+        throw std::invalid_argument("Network structure is empty");
+    }
+    if (num_features <= 0) {
+        throw std::invalid_argument("Dataset has no features");
+    }
+    if (num_classes <= 0) {
+        throw std::invalid_argument("Dataset has no output classes");
+    }
+    if (model.hidden_activation == ActivationType::SOFTMAX) {
+        throw std::invalid_argument("Softmax is not supported as a hidden activation");
     }
     if (model.task == TaskType::REGRESSION && model.loss_type != LossType::MSE) {
         throw std::invalid_argument("Regression tasks must use MSE loss");
     }
     if ((model.output_activation == ActivationType::SOFTMAX) != (model.loss_type == LossType::CCE)) {
-        // Must be paired together because Softmax derivative is combined with CCE loss derivative to simplify the calculation
         throw std::invalid_argument("Softmax activation and CCE loss must be paired together");
     }
     if (model.loss_type == LossType::CCE && num_classes < 2) {
@@ -185,33 +105,61 @@ void Network::addLayer(std::unique_ptr<Layer> layer) {
 std::vector<const DenseLayer*> Network::getDenseLayers() const {
     std::vector<const DenseLayer*> dense_layers;
     for (const auto& layer : layers) {
-        if (auto dense_layer = dynamic_cast<DenseLayer*>(layer.get())) {
+        if (auto* dense_layer = dynamic_cast<const DenseLayer*>(layer.get())) {
             dense_layers.push_back(dense_layer);
         }
     }
     return dense_layers;
 }
 
-// Forward pass through the network, saving weights norm for loss calculation with regularization
-Matrix Network::predict(const Matrix& out, bool training) {
-    weights_norm = 0.0;
-    Matrix new_out = out;
+// Snapshot the current weights and biases of all layers in the network
+void Network::snapshotParameters() {
     for (auto& layer : layers) {
-        new_out = layer->forward(new_out, training); // Forward pass through each layer
-        weights_norm += layer->getWeightNorm();      // Accumulate the squared norm of weights for L2 regularization loss (not really used anymore)
+        layer->snapshot();
     }
-    return new_out;
+}
+
+// Restore the weights and biases of all layers in the network to the last snapshot
+void Network::restoreParameters() {
+    for (auto& layer : layers) {
+        layer->restore();
+    }
+}
+
+// Inference forward pass, does not record the input of each layer, since backward will not be called (can be made const)
+Matrix Network::predict(const Matrix& input) const {
+    Matrix out = input;
+    for (const auto& layer : layers) {
+        out = layer->forward(out, false);
+    }
+    return out;
+}
+
+// Training forward pass, records the input of each layer for use in the backward pass
+Matrix Network::forward(const Matrix& input) {
+    Matrix out = input;
+    for (auto& layer : layers) {
+        out = layer->forward(out, true);
+    }
+    return out;
+}
+
+// Training backward pass, propagates the gradient from the loss to the first layer
+void Network::backward(const Matrix& output_gradient) {
+    Matrix gradient = output_gradient;
+    for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
+        const bool is_first_layer = (std::next(it) == layers.rend());
+        gradient = (*it)->backward(gradient, model, is_first_layer);
+    }
 }
 
 // Train the network using the dataset provided by the model_set
-SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, int epochs, int patience, int model_index, int outer_index, int inner_index, bool logging) {
-    bool in_model_selection = inner_index != -1; // if there are no inner folds, then we are not in model selection mode
-
+SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
     // File logging handling
     std::ofstream log_file;
-    if (logging) {
-        std::string log_filename = std::format("{}/outer{}_{}m{}.csv", MODEL_PATH, outer_index, inner_index >= 0 ? "inner_" : "", model_index);
-        bool is_first_write = (inner_index <= 0);
+    if (ctx.logging) {
+        std::string log_filename = std::format("{}/outer{}_{}m{}.csv", MODEL_PATH, ctx.outer_index, ctx.in_model_selection ? "inner_" : "", ctx.model_id);
+        bool is_first_write = !ctx.in_model_selection || ctx.inner_index == 0;
         log_file.open(log_filename, is_first_write ? std::ios::trunc : std::ios::app);
         if (!log_file.is_open()) {
             throw std::runtime_error("Failed to open log file for writing: " + log_filename);
@@ -221,15 +169,17 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
         }
     }
 
+    // Validate the split
+    const int input_size = static_cast<int>(indices.train_indices.size());
+    if (input_size == 0 || indices.test_indices.empty()) {
+        throw std::runtime_error("Split has an empty training or test set");
+    }
+
     // Extract test features and labels from the dataset
     Matrix test_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
     Matrix test_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
 
     // Calculate the number of batches
-    const int input_size = indices.train_indices.size();
-    if (input_size == 0) {
-        throw std::runtime_error("Training set is empty.");
-    }
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;
     const int num_batches = (input_size + current_batch_size - 1) / current_batch_size;
 
@@ -241,111 +191,127 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, in
     // Logging and metrics variables
     SplitResults split_results;
     int logged_epoch = 0;
+    const bool track_accuracy = (model.task == TaskType::CLASSIFICATION);
+
+    // Flush every epoch up to log file
+    auto flush_log = [&](int upto_epoch) {
+        if (!log_file.is_open()) {
+            return;
+        }
+        // Sync the logged epoch with the available metrics
+        const int available = static_cast<int>(std::min(split_results.train_metrics.size(), split_results.test_metrics.size()));
+        const int last = std::min(upto_epoch, available - 1);
+        while (logged_epoch <= last) {
+            const EpochMetric& train = split_results.train_metrics.epochs[logged_epoch];
+            const EpochMetric& test = split_results.test_metrics.epochs[logged_epoch];
+            log_file << logged_epoch << ","
+                     << train.loss << ","
+                     << test.loss << ","
+                     << train.accuracy * 100.0 << ","
+                     << test.accuracy * 100.0 << "\n";
+            logged_epoch++;
+        }
+        log_file.flush();
+    };
 
     // Linear learning rate decay parameters
-    Scalar initial_eta = model.eta;
-    Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
-    Scalar tau = epochs * TAU_MULTIPLIER;
+    const Scalar initial_eta = model.eta;
+    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
+    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs) * TAU_MULTIPLIER);
 
-    // Local copy of the training indices to shuffle for each epoch
+    // Reusable batch index buffer and local copy of the training indices to shuffle each epoch
+    std::vector<int> batch_indices;
+    batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
-    for (int i = 0; i < epochs; i++) {
+
+    for (int i = 0; i < ctx.epochs; i++) {
         // Shuffle the training data indices for current epoch
         std::ranges::shuffle(epoch_indices, get_random_generator());
 
         // Update the learning rate based on the current epoch using linear decay
-        Scalar gamma = std::min(static_cast<Scalar>(1.0), static_cast<Scalar>(i / tau));
-        model.eta = (1.0 - gamma) * initial_eta + (gamma * target_eta);
-
-        // Pre-allocate matrices for the current batch to avoid reallocating memory in each iteration
-        Matrix batch_features(dataset.num_features, current_batch_size);
-        Matrix batch_labels(dataset.num_classes, current_batch_size);
+        const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i) / tau);
+        model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
 
         MetricsResult batch_metrics;
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
-            // Determine the startint index and size for the current batch
+            // Determine the starting index and size for the current batch
             const int index_start = j * current_batch_size;
             const int actual_batch_size = std::min(index_start + current_batch_size, input_size) - index_start;
 
-            if (actual_batch_size != batch_features.cols()) {
-                // Shrink the pre-allocated matrices for the final batch
-                batch_features.conservativeResize(Eigen::NoChange, actual_batch_size);
-                batch_labels.conservativeResize(Eigen::NoChange, actual_batch_size);
-            }
-
-            // Extract the current batch of features and labels (assign without reallocating)
-            std::vector<int> batch_indices(epoch_indices.begin() + index_start, epoch_indices.begin() + index_start + actual_batch_size);
-            batch_features.noalias() = dataset.features(Eigen::placeholders::all, batch_indices);
-            batch_labels.noalias() = dataset.labels(Eigen::placeholders::all, batch_indices);
+            // Extract the current batch of features and labels
+            batch_indices.assign(epoch_indices.begin() + index_start, epoch_indices.begin() + index_start + actual_batch_size);
+            Matrix batch_features = dataset.features(Eigen::placeholders::all, batch_indices);
+            Matrix batch_labels = dataset.labels(Eigen::placeholders::all, batch_indices);
 
             // Forward pass to get predictions for the current batch
-            Matrix batch_prediction = predict(batch_features, true);
+            Matrix batch_prediction = forward(batch_features);
 
             // Calculate the loss and accuracy for the current batch and accumulate for the epoch
-            batch_metrics.add(batch_labels, batch_prediction, loss_func);
+            batch_metrics.add(batch_labels, batch_prediction, loss_func, track_accuracy);
 
             // Start the backward pass to update weights and biases based on the output loss gradient
-            Matrix gradient = loss_derivative(batch_labels, batch_prediction);
-            for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
-                gradient = (*it)->backward(gradient, model);
-            }
+            backward(loss_derivative(batch_labels, batch_prediction));
         }
         split_results.train_metrics.append(batch_metrics);
+        split_results.train_metrics.average_last();
 
         // Check for NaN or Inf in the latest training loss to stop training
-        Scalar latest_train_loss = split_results.train_metrics.loss.back();
-        if (std::isnan(latest_train_loss) || std::isinf(latest_train_loss)) {
-            std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+        if (!std::isfinite(split_results.train_metrics.last_loss())) {
+            split_results.train_metrics.invalid = true;
+            split_results.test_metrics.invalid = true;
+            std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             break;
         }
 
-        if ((patience > 0 && in_model_selection) || logging) {
-            // Evaluate the model on the test set and calculate the loss and accuracy
+        // Evaluate the model on the test set and calculate the loss and accuracy
+        const bool need_test_metrics = (ctx.patience > 0 && ctx.in_model_selection) || ctx.logging;
+        if (need_test_metrics) {
             Matrix test_prediction = predict(test_features);
-            split_results.test_metrics.append(test_labels, test_prediction, loss_func);
+            split_results.test_metrics.append(test_labels, test_prediction, loss_func, track_accuracy);
         }
 
-        split_results.average(); // Average batch metrics for the epoch (if batch training was used)
-
         // Early stopping logic based on the patience parameter
-        if (patience > 0) {
-            Scalar current_loss = in_model_selection ? split_results.test_metrics.loss.back() : split_results.train_metrics.loss.back();
-            if (i == 0 || current_loss < patience_loss - (in_model_selection ? 0.0 : ES_TRAIN)) { // Use a small threshold for training loss to avoid stopping too early due to minor fluctuations
+        if (ctx.patience > 0) {
+            Scalar current_loss = ctx.in_model_selection ? split_results.test_metrics.last_loss() : split_results.train_metrics.last_loss();
+            // If the current loss is better than the best loss so far (with tolerance), reset the patience counter and save the model parameters
+            if (i == 0 || current_loss < patience_loss - std::abs(patience_loss) * ES_REL_TOL) {
                 epochs_without_improvement = 0;
                 patience_loss = current_loss;
+                snapshotParameters(); // Save the current parameters as the best epoch
             } else {
                 epochs_without_improvement++;
             }
 
-            if (epochs_without_improvement >= patience) {
+            if (epochs_without_improvement >= ctx.patience) {
                 auto_early_stop_flag = true;
             }
         }
-        if (logging && log_file.is_open()) {
-            // Log the metrics for the current epoch to the log file
-            if (i > 0 && (i % LOG_FREQ == 0 || i == epochs - 1)) {
-                while (logged_epoch < i) {
-                    log_file << logged_epoch << ","
-                             << split_results.train_metrics.loss[logged_epoch] << ","
-                             << split_results.test_metrics.loss[logged_epoch] << ","
-                             << split_results.train_metrics.accuracy[logged_epoch] * 100.0 << ","
-                             << split_results.test_metrics.accuracy[logged_epoch] * 100.0 << "\n";
-                    logged_epoch++;
-                }
-                log_file.flush();
-            }
+
+        // Log the metrics for the current epoch to the log file
+        if (ctx.logging && (i % LOG_FREQ == 0 || i == ctx.epochs - 1)) {
+            flush_log(i);
         }
 
         if (early_stop_flag || auto_early_stop_flag) {
             if (early_stop_flag) {
-                std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+                std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             } else {
-                std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", inner_index, outer_index, i);
+                std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             }
             break;
         }
     }
-    early_stop_flag = 0; // Reset the early stop flag for the next fold
+
+    // Roll back to the parameters of the best epoch if early stopping was triggered automatically
+    if (auto_early_stop_flag) {
+        restoreParameters();
+    }
+
+    // Write final epochs to the log file
+    flush_log(ctx.epochs - 1);
+
+    model.eta = initial_eta; // Restore the configured learning rate after decay
+    early_stop_flag = 0;     // Reset the early stop flag for the next fold
     if (log_file.is_open()) {
         log_file.close();
     }

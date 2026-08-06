@@ -1,70 +1,25 @@
 #pragma once
 
 #include "dataset.hpp"
+#include "layer.hpp"
 #include "metrics.hpp"
 #include "model.hpp"
-#include "optimizer.hpp"
 #include "types.hpp"
 
-class Layer {
-  protected:
-    Matrix X;
-    Matrix Y;
+#include <memory>
+#include <vector>
 
-  public:
-    virtual ~Layer() = default;
-    virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
-    virtual Matrix backward(const Matrix& output_gradient, const Model& model) = 0;
-    virtual Scalar getWeightNorm() const { return 0.0; }
-};
+// Context for a training run
+struct TrainContext {
+    int epochs = 0;
+    int patience = 0;
 
-class DenseLayer : public Layer {
-  private:
-    Matrix W;
-    Vector b;
-    std::unique_ptr<Optimizer> optimizer;
+    int model_id = 0;    // Grid-search id of the model being trained
+    int outer_index = 0; // Outer cross-validation fold
+    int inner_index = 0; // Inner cross-validation fold
 
-    // Set the optimizer of the network based on the specified OptimizerType
-    void setOptimizer(OptimizerType optType) {
-        switch (optType) {
-        case OptimizerType::SGD:
-            optimizer = std::make_unique<GradientDescent>(W.rows(), W.cols());
-            break;
-        case OptimizerType::RMSPROP:
-            optimizer = std::make_unique<RMSProp>(W.rows(), W.cols());
-            break;
-        case OptimizerType::ADAM:
-            optimizer = std::make_unique<Adam>(W.rows(), W.cols());
-            break;
-        default:
-            throw std::invalid_argument("Unsupported optimizer type");
-        }
-    }
-
-  public:
-    DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type);
-    DenseLayer(Matrix weights, Vector biases, OptimizerType opt_type) : W(weights), b(biases) {
-        setOptimizer(opt_type);
-    }
-
-    Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, const Model& model) override;
-
-    Matrix getWeights() const { return W; }
-    Vector getBiases() const { return b; }
-    Scalar getWeightNorm() const override { return W.squaredNorm(); }
-};
-
-class ActivationLayer : public Layer {
-  private:
-    ActivationFunction activation;
-    ActivationFunction activation_derivative;
-
-  public:
-    ActivationLayer(ActivationType activationType);
-
-    Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, [[maybe_unused]] const Model& model) override;
+    bool in_model_selection = false; // Selecting on a validation fold rather than final training
+    bool logging = true;             // Write the per-epoch metrics CSV
 };
 
 class Network {
@@ -72,23 +27,29 @@ class Network {
     std::vector<std::unique_ptr<Layer>> layers;
     LossFunction loss_func;
     LossDerivative loss_derivative;
-    Scalar weights_norm;
 
     void setLossFunction(LossType lossType);
     void addLayer(std::unique_ptr<Layer> layer);
-    void validateNetworkStructure(int num_classes) const;
+    void buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Matrix>* weights, const std::vector<Vector>* biases, bool build_optimizer);
+    static void validateModel(const Model& model, int num_features, int num_classes);
+
+    void snapshotParameters();
+    void restoreParameters();
+
+    Matrix forward(const Matrix& input);
+    void backward(const Matrix& output_gradient);
 
   public:
-    Network(const Model& model);
-    Network(const Model& model, const int num_features, const int num_classes);
-    Network(const Model& model, std::vector<Matrix> weights, std::vector<Vector> biases);
+    explicit Network(const Model& model);
+    Network(const Model& model, int num_features, int num_classes);
+    Network(const Model& model, const std::vector<Matrix>& weights, const std::vector<Vector>& biases, bool build_optimizer = false);
     ~Network() = default;
 
     Model model;
 
-    Matrix predict(const Matrix& out, bool training = false);
-    SplitResults train(const Dataset& dataset, const DataSplit& indices, int epochs, int patience, int model_index, int outer_index, int inner_index, bool logging = true);
+    Matrix predict(const Matrix& input) const;
+    SplitResults train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx);
 
     std::vector<const DenseLayer*> getDenseLayers() const;
-    LossFunction getLossFunction() const { return loss_func; }
+    const LossFunction& getLossFunction() const { return loss_func; }
 };
