@@ -7,23 +7,23 @@
 namespace ActivationFunctions {
 inline Matrix sigmoid(const Matrix& X) {
     // f(x) = 1 / (1 + e^(-x))
-    return 1.0 / (1.0 + (-X.array()).exp());
+    return Scalar(1) / (Scalar(1) + (-X.array()).exp());
 }
 
 inline Matrix sigmoid_derivative(const Matrix& X) {
     // f'(x) = f(x) * (1 - f(x))
     Matrix s = sigmoid(X);
-    return s.array() * (1.0 - s.array());
+    return s.array() * (Scalar(1) - s.array());
 }
 
 inline Matrix relu(const Matrix& X) {
     // f(x) = max(0, x)
-    return X.array().max(0.0);
+    return X.array().max(Scalar(0));
 }
 
 inline Matrix relu_derivative(const Matrix& X) {
     // f'(x) = 1 if x > 0, else 0
-    return (X.array() > 0.0).cast<Scalar>();
+    return (X.array() > Scalar(0)).template cast<Scalar>();
 }
 
 inline Matrix tanh_activation(const Matrix& X) {
@@ -34,7 +34,7 @@ inline Matrix tanh_activation(const Matrix& X) {
 inline Matrix tanh_derivative(const Matrix& X) {
     // f'(x) = 1 - f(x)^2
     Matrix t = tanh_activation(X);
-    return 1.0 - (t.array() * t.array());
+    return Scalar(1) - (t.array() * t.array());
 }
 
 inline Matrix linear(const Matrix& X) {
@@ -43,7 +43,7 @@ inline Matrix linear(const Matrix& X) {
 }
 
 inline Matrix linear_derivative(const Matrix& X) {
-    // f'(x) = 1
+    // f'(x) = 1 (see has_identity_derivative)
     return Matrix::Ones(X.rows(), X.cols());
 }
 
@@ -52,12 +52,17 @@ inline Matrix softmax(const Matrix& X) {
     Matrix inputs = X.rowwise() - X.colwise().maxCoeff(); // Avoid e^x overflow
     inputs = inputs.array().exp();
     Matrix sum = inputs.colwise().sum();
-    return inputs.array() / sum.replicate(X.rows(), 1).array();
+    return inputs.array().rowwise() / sum.row(0).array();
 }
 
-inline Matrix softmax_derivative(const Matrix& X) {
-    // Passthrough, the calculation is simplified by CCE.
-    return linear_derivative(X);
+inline Matrix softmax_derivative(const Matrix&) {
+    // Softmax derivative is handled in the loss function (CCE), so this function is never called
+    throw std::logic_error("Softmax is only supported as an output activation paired with CCE loss");
+}
+
+// Used to skip the derivative in backward pass when it would do nothing
+inline bool has_identity_derivative(ActivationType activation) {
+    return activation == ActivationType::LINEAR;
 }
 } // namespace ActivationFunctions
 
@@ -73,29 +78,33 @@ inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
 }
 
 inline Scalar bce(const Matrix& target, const Matrix& prediction) {
-    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
+    Matrix pred_clipped = prediction.cwiseMax(LOSS_EPS).cwiseMin(Scalar(1) - LOSS_EPS);
     // f = -(1 / N) * sum(y * log(y*) + (1 - y) * log(1 - y*))
     return -(target.array() * pred_clipped.array().log() +
-             (1.0 - target.array()) * (1.0 - pred_clipped.array()).log())
+             (Scalar(1) - target.array()) * (Scalar(1) - pred_clipped.array()).log())
                 .sum() /
            target.cols();
 }
 
 inline Matrix bce_derivative(const Matrix& target, const Matrix& prediction) {
-    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
-    // f' = (y* - y) / (y* * (1 - y*))
-    return (pred_clipped - target).array() / (pred_clipped.array() * (1.0 - pred_clipped.array()));
+    // Combined derivative of BCE + Sigmoid: f' = y* - y (see includes_output_derivative)
+    return (prediction - target);
 }
 
 inline Scalar cce(const Matrix& target, const Matrix& prediction) {
-    Matrix pred_clipped = prediction.cwiseMax(EPSILON).cwiseMin(1.0 - EPSILON);
+    Matrix pred_clipped = prediction.cwiseMax(LOSS_EPS).cwiseMin(Scalar(1) - LOSS_EPS);
     // f = -(1 / N) * sum(y * log(y*))
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
 
 inline Matrix cce_derivative(const Matrix& target, const Matrix& prediction) {
-    // Calculates the combined derivative of CCE + Softmax: f' = y* - y
+    // Combined derivative of CCE + Softmax: f' = y* - y (see includes_output_derivative)
     return (prediction - target);
+}
+
+// True when the loss derivative already simplifies the output activation's derivative
+inline bool includes_output_derivative(LossType loss) {
+    return loss == LossType::BCE || loss == LossType::CCE;
 }
 } // namespace LossFunctions
 
