@@ -3,6 +3,8 @@
 #include "types.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <numeric>
 #include <print>
 #include <vector>
@@ -10,21 +12,24 @@
 namespace Metrics {
 inline Scalar classification_accuracy(const Matrix& target, const Matrix& prediction) {
     int correct_predictions = 0;
-    int num_samples = target.cols();
+    int num_samples = static_cast<int>(target.cols());
+    if (num_samples == 0) {
+        return 0.0;
+    }
 
     if (target.rows() == 1) { // Binary classification
         for (int i = 0; i < num_samples; ++i) {
-            Scalar pred_val = prediction(0, i) >= 0.5 ? 1.0 : 0.0; // Convert prediction to binary class
-            Scalar target_val = target(0, i);                      // Get the target class
+            bool pred_positive = prediction(0, i) >= Scalar(0.5); // Convert prediction to binary class
+            bool target_positive = target(0, i) >= Scalar(0.5);   // Get the target class
 
             // Count correct predictions
-            if (pred_val == target_val) {
+            if (pred_positive == target_positive) {
                 correct_predictions++;
             }
         }
     } else { // Multi-class classification
         for (int i = 0; i < num_samples; ++i) {
-            int target_class, predicted_class;
+            Eigen::Index target_class, predicted_class;
 
             target.col(i).maxCoeff(&target_class);        // Get the index of the maximum value in the target column (target class)
             prediction.col(i).maxCoeff(&predicted_class); // Get the index of the maximum value in the prediction column (the predicted class)
@@ -40,98 +45,122 @@ inline Scalar classification_accuracy(const Matrix& target, const Matrix& predic
 }
 } // namespace Metrics
 
+// Metrics for a single epoch
+struct EpochMetric {
+    Scalar loss = 0;
+    Scalar accuracy = 0;
+    // Weight of this epoch for averaging across folds/batches
+    Scalar weight = 0;
+};
+
 struct MetricsResult {
-    std::vector<Scalar> loss;
-    std::vector<Scalar> accuracy;
-    std::vector<int> occurrences; // Number of occurrences for each epoch (used for averaging)
+    std::vector<EpochMetric> epochs;
+    // Set when training was interrupted by inf/NaN loss
+    bool invalid = false;
+
+    bool empty() const { return epochs.empty(); }
+    size_t size() const { return epochs.size(); }
+    Scalar last_loss() const { return epochs.back().loss; }
 
     void print(TaskType task) const {
-        if (task == TaskType::CLASSIFICATION) {
-            std::println(" • Accuracy:   {:.2f}%", std::accumulate(accuracy.begin(), accuracy.end(), 0.0) / accuracy.size() * 100.0);
+        if (empty()) {
+            std::println(" • (no metrics recorded)");
+            return;
         }
-        std::println(" • Loss: {:.3f}", std::accumulate(loss.begin(), loss.end(), 0.0) / loss.size());
+        auto mean = [this](Scalar EpochMetric::* field) {
+            return std::accumulate(epochs.begin(), epochs.end(), Scalar(0), [field](Scalar acc, const EpochMetric& e) { return acc + e.*field; }) / epochs.size();
+        };
+        if (task == TaskType::CLASSIFICATION) {
+            std::println(" • Accuracy:   {:.2f}%", mean(&EpochMetric::accuracy) * 100.0);
+        }
+        std::println(" • Loss: {:.3f}", mean(&EpochMetric::loss));
     }
 
     // Append metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function
-    void append(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
-        loss.push_back(loss_func(target, prediction));
-        accuracy.push_back(Metrics::classification_accuracy(target, prediction));
-        occurrences.push_back(1);
+    void append(const Matrix& target, const Matrix& prediction, const LossFunction& loss_func, bool track_accuracy = true) {
+        epochs.push_back({loss_func(target, prediction), track_accuracy ? Metrics::classification_accuracy(target, prediction) : Scalar(0), 1});
     }
 
-    // Add metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function, accumulating values for the same epochs
-    void add(const Matrix& target, const Matrix& prediction, LossFunction loss_func) {
-        Scalar batch_loss = loss_func(target, prediction);
-        Scalar batch_accuracy = Metrics::classification_accuracy(target, prediction);
+    // Accumulate one `batch` into the current epoch, weighted by the sample count
+    void add(const Matrix& target, const Matrix& prediction, const LossFunction& loss_func, bool track_accuracy = true) {
+        const Scalar n = static_cast<Scalar>(target.cols());
+        const Scalar batch_loss = loss_func(target, prediction) * n;
+        const Scalar batch_accuracy = (track_accuracy ? Metrics::classification_accuracy(target, prediction) : Scalar(0)) * n;
 
-        // If this is the first epoch, initialize the metrics
-        if (loss.empty()) {
-            append(target, prediction, loss_func);
+        if (empty()) { // First batch of the epoch starts the accumulator
+            epochs.push_back({batch_loss, batch_accuracy, n});
             return;
         }
 
-        loss.back() += batch_loss;
-        accuracy.back() += batch_accuracy;
-        occurrences.back() += 1;
+        epochs.back().loss += batch_loss;
+        epochs.back().accuracy += batch_accuracy;
+        epochs.back().weight += n;
     }
 
     // Append metrics from another MetricsResult instance
     void append(const MetricsResult& other) {
-        loss.insert(loss.end(), other.loss.begin(), other.loss.end());
-        accuracy.insert(accuracy.end(), other.accuracy.begin(), other.accuracy.end());
-        occurrences.insert(occurrences.end(), other.occurrences.begin(), other.occurrences.end());
+        epochs.insert(epochs.end(), other.epochs.begin(), other.epochs.end());
+        invalid = invalid || other.invalid;
     }
 
-    // Add metrics from another MetricsResult instance, accumulating/aligning values for the same epochs
+    // Combine another fold data into this accumulator, aligning by epoch.
     void add(const MetricsResult& other) {
-        if (other.loss.empty()) {
-            return; // Nothing to add
+        if (other.empty()) {
+            return;
         }
-        if (loss.empty()) {
+        if (empty()) {
             *this = other; // First fold simply initializes the accumulator
             return;
         }
 
-        size_t max_size = std::max(loss.size(), other.loss.size());
+        invalid = invalid || other.invalid;
 
-        // Pad with last value if this fold stopped earlier than 'other'
-        while (loss.size() < max_size) {
-            loss.push_back(loss.back());
-            accuracy.push_back(accuracy.back());
-            occurrences.push_back(occurrences.back());
+        if (invalid) {
+            // If either fold is invalid, keep the invalid state and truncate to the shorter length
+            epochs.resize(std::min(size(), other.size()));
+        } else {
+            // Pad with last value if this fold stopped earlier than 'other'
+            const EpochMetric last = epochs.back();
+            epochs.resize(std::max(size(), other.size()), last);
         }
 
-        for (size_t i = 0; i < max_size; ++i) {
+        for (size_t i = 0; i < size(); ++i) {
             // Use the last value if 'other' fold stopped earlier than this, otherwise use the corresponding value
-            Scalar add_loss = (i < other.loss.size()) ? other.loss[i] : other.loss.back();
-            Scalar add_acc = (i < other.accuracy.size()) ? other.accuracy[i] : other.accuracy.back();
-
-            // Add the metrics from 'other' to this instance
-            loss[i] += add_loss;
-            accuracy[i] += add_acc;
-            occurrences[i] += 1;
+            const EpochMetric& source = (i < other.size()) ? other.epochs[i] : other.epochs.back();
+            epochs[i].loss += source.loss;
+            epochs[i].accuracy += source.accuracy;
+            epochs[i].weight += 1;
         }
     }
 
-    // Average the accumulated metrics for each epoch using the number of occurrences
+    // Average the accumulated metrics for each epoch using the accumulated weights
     void average() {
-        for (size_t i = 0; i < loss.size(); ++i) {
-            loss[i] /= occurrences[i];
-            accuracy[i] /= occurrences[i];
-            occurrences[i] = 1;
+        for (EpochMetric& epoch : epochs) {
+            average(epoch);
         }
+    }
+
+    // Average only the most recent epoch
+    void average_last() {
+        if (!empty()) {
+            average(epochs.back());
+        }
+    }
+
+  private:
+    // Average the metrics of a single epoch using its accumulated weight
+    static void average(EpochMetric& epoch) {
+        if (epoch.weight != 0) {
+            epoch.loss /= epoch.weight;
+            epoch.accuracy /= epoch.weight;
+        }
+        epoch.weight = 1;
     }
 };
 
 struct SplitResults {
     MetricsResult train_metrics;
     MetricsResult test_metrics;
-
-    // Call the append method for both train_metrics and test_metrics
-    void append(const Matrix& train_target, const Matrix& train_prediction, const Matrix& test_target, const Matrix& test_prediction, LossFunction loss_func) {
-        train_metrics.append(train_target, train_prediction, loss_func);
-        test_metrics.append(test_target, test_prediction, loss_func);
-    }
 
     // Call the add method for both train_metrics and test_metrics
     void add(const SplitResults& other) {
@@ -152,49 +181,40 @@ struct SplitResults {
         test_metrics.print(task);
     }
 
-    // Overload the '>' operator to compare SplitResults based on the best test metric
-    bool operator>(const SplitResults& other) const {
-        if (other.get_metric().empty())
-            return true;
-        if (get_metric().empty())
-            return false;
+    // The score is the lowest, over all sliding windows, of the highest loss within the window.
+    Scalar score() const {
+        const auto& epochs = test_metrics.epochs;
+        // +infinity is used to indicate that the model is `invalid`
+        constexpr Scalar inf = std::numeric_limits<Scalar>::infinity();
 
-        return get_minimum_max_loss() < other.get_minimum_max_loss();
-    }
-
-  private:
-    // Return the test metrics (loss) for comparison
-    const std::vector<Scalar>& get_metric() const {
-        return test_metrics.loss;
-    }
-
-    // Return the lowest test loss for comparison
-    Scalar get_lowest_loss() const {
-        const auto& metric = get_metric();
-        return *std::min_element(metric.begin(), metric.end());
-    }
-
-    // Return the lowest maximum test loss over a sliding windowfor comparison
-    Scalar get_minimum_max_loss() const {
-        const auto& metric = get_metric();
-        const size_t window_size = 20;
-
-        // If the metric size is less than the window size, return the lowest loss
-        if (metric.size() < window_size) {
-            return get_lowest_loss();
+        // If the test metrics are empty or invalid, return `invalid` score
+        if (epochs.empty() || test_metrics.invalid) {
+            return inf;
+        }
+        // If any epoch has NaN or Inf loss, return `invalid` score
+        if (std::ranges::any_of(epochs, [](const EpochMetric& e) { return !std::isfinite(e.loss); })) {
+            return inf;
         }
 
-        Scalar best_window_score = std::numeric_limits<Scalar>::infinity();
-        // Iterate with a sliding window of size 'window_size'
-        for (size_t i = 0; i <= metric.size() - window_size; ++i) {
+        // Determine the size of the sliding window, which is the minimum of SELECTION_WINDOW and the number of epochs
+        const size_t window_size = std::min(static_cast<size_t>(SELECTION_WINDOW), epochs.size());
+        Scalar best_window_score = inf;
+        for (size_t i = 0; i + window_size <= epochs.size(); ++i) {
             // Find the maximum loss in the current window
-            Scalar window_max = *std::max_element(metric.begin() + i, metric.begin() + i + window_size);
+            const auto window_max = std::ranges::max_element(epochs.begin() + i, epochs.begin() + i + window_size, {}, &EpochMetric::loss);
             // Update the best window score if the current window's maximum is lower
-            if (window_max < best_window_score) {
-                best_window_score = window_max;
-            }
+            best_window_score = std::min(best_window_score, window_max->loss);
         }
-
         return best_window_score;
+    }
+
+    // Compare this SplitResults with another to determine if this one is better than the other
+    bool is_better_than(const SplitResults& other) const {
+        const Scalar this_score = score();
+        const Scalar other_score = other.score();
+        if (!std::isfinite(this_score)) {
+            return false; // Never prefer an invalid model
+        }
+        return !std::isfinite(other_score) || this_score < other_score;
     }
 };
