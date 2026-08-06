@@ -11,18 +11,18 @@ Args Args::parse(int argc, char* argv[]) {
     app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Maps::str_to_dataset, CLI::ignore_case))->required();
 
     app.add_option("--name", args.name, "Name for the model and log files")->default_val("model");
-    app.add_option("--params", args.model_file, "File containing model parameters for grid search")->default_val("artifacts/grid.csv");
-    app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1);
-    app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1);
+    app.add_option("--params", args.model_file, "File containing model parameters for grid search")->default_val("grids/grid.csv");
+    app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1)->check(CLI::NonNegativeNumber);
+    app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1)->check(CLI::NonNegativeNumber);
 
-    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800);
-    app.add_option("--patience", args.patience, "Patience for early stopping (0 = disabled)")->default_val(60);
+    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800)->check(CLI::PositiveNumber);
+    app.add_option("--patience", args.patience, "Patience for early stopping (0 = disabled)")->default_val(60)->check(CLI::NonNegativeNumber);
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
     app.add_flag("--dump", args.dump, "Dump best models' weights to file after total retraining")->default_val(false);
     app.add_flag("--train", args.train, "Train a new model")->default_val(false);
 
-    app.add_option("--train_ratio", args.train_ratio, "Training set ratio")->default_val(0.85);
-    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0);
+    app.add_option("--train_ratio", args.train_ratio, "Training set ratio, exclusive bounds")->default_val(0.85)->check(CLI::Range(0.0, 1.0).description("in (0,1)"));
+    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0)->check(CLI::Range(0.0, 1.0).description("in (0,1]"));
 
     app.add_option("--seed", args.seed, "Random seed")->default_val(42);
 
