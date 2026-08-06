@@ -30,31 +30,42 @@ Network parameters are defined in a CSV file passed to the `--params` argument.
 
 | Item | Description | Options |
 | :--- | :--- | :--- |
-| `id` | Identifier of the parameters combination | `int` |
+| `id` | Identifier of the parameters combination (must be unique) | `int` |
 | `net` | Structure of the network (`layers` & `neurons`) | `{i}-{i}-{i}` |
-| `hidden` | Activation function of the `hidden` layers | `ReLU`, `Sigmoid`, `Tanh` |
+| `hidden` | Activation function of the `hidden` layers | `ReLU`, `Sigmoid`, `Tanh`, `Linear` |
 | `output` | Activation function of the `output` layer  | `Sigmoid`, `Softmax`, `Linear` |
 | `init` | Initialization method of the weights| `Random`, `Lecun`, `Glorot`, `He` |
 | `opt` | Optimization method for the weights | `SGD`, `RMSProp`, `Adam` |
 | `loss` | Loss type for gradient calcuation | `MSE`, `BCE`, `CCE` |
-| `batch` | Batch size (use 0 for a single batch) | `int` |
-| `eta` | Learning rate of the network | `double` |
-| `lambda`| Regularization hyperparameter | `double` |
-| `alpha`| Momentum hyperparameter | `double` |
+| `batch` | Batch size (use 0 for a single batch) | `int` &ge; 0 |
+| `eta` | Learning rate of the network | `double` > 0 |
+| `lambda`| Regularization hyperparameter | `double` &ge; 0 |
+| `alpha`| Momentum hyperparameter (`SGD`, `RMSProp`) | `double` in [0, 1) |
+| `beta1`| *Optional.* Adam first-moment decay | `double` in [0, 1), default `0.9` |
 
 ```csv
-id,net,hidden,output,init,opt,batch,eta,lambda,alpha
-0,128-64,relu,softmax,he,sgd,32,0.01,0.001,0.9
-1,64,sigmoid,sigmoid,glorot,sgd,16,0.1,1e-4,0.0
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha
+0,128-64,relu,softmax,he,sgd,cce,32,0.01,0.001,0.9
+1,64,sigmoid,sigmoid,glorot,sgd,bce,16,0.1,1e-4,0.0
 ```
+
+`beta1` is a separate column and optional. If not provided, it defaults to `0.9`. It is only used when the optimizer is `Adam`.
+
+```csv
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+0,128-64,relu,softmax,he,adam,cce,128,0.001,0.0,0.0,0.9
+```
+
+**Constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require
+`MSE`; `Softmax` is not valid as a hidden activation.
 
 
 ## CLI Options
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
-| `dataset` | Dataset type: `xor`, `xor_hot`, `mnist` | *Required* |
-| `--params` | Path to CSV file containing model configurations for grid search | `dataset/grid.csv` |
+| `dataset` | Dataset type: `xor`, `xor_hot`, `monk_1(_hot)`, `monk_2(_hot)`, `monk_3(_hot)`, `mnist` | *Required* |
+| `--params` | Path to CSV file containing model configurations for grid search | `grids/grid.csv` |
 | `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
 | `--train` | Flag to execute the training & cross-validation loop | `false` |
 | `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
@@ -62,18 +73,18 @@ id,net,hidden,output,init,opt,batch,eta,lambda,alpha
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
 | `--epochs` | Maximum number of training epochs per fold | `800` |
 | `--patience` | Number of epochs to wait before checking for early stopping | `60` |
-| `--train_ratio`| Training set split ratio (when $K=1$) | `0.85` |
+| `--train_ratio`| Training set split ratio, exclusive bounds (when $K=1$) | `0.85` |
 | `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
 | `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |
 | `--seed` | Random seed for reproducibility | `42` |
 
 ## Prerequisites & Dependencies
 
-* **C++ Compiler**: GCC or Clang supporting **C++20/23**.
-* **CMake**: Version 3.14 or higher.
+* **C++ Compiler**: GCC or Clang supporting **C++23** (`std::print`, `std::byteswap`).
+* **CMake**: Version 3.18 or higher.
 * **Eigen3**: Installed on your system.
 * **CLI11**: Fetched automatically via CMake.
-* **BLAS**: Installed on your system [can be disabled via CMake]
+* **BLAS**: Installed on your system. Optional — disable with `-DNN_USE_BLAS=OFF`.
 
 ## Building the Project
 
@@ -81,10 +92,17 @@ id,net,hidden,output,init,opt,batch,eta,lambda,alpha
 For optimal performance, build using the Release configuration:
 
 ```bash
-mkdir -p build/Release
-cmake -B build/Release -DCMAKE_BUILD_TYPE=Release
-cmake --build build/Release -j4
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release && cmake --build build/Release -j4
 ```
+
+### Build options
+
+| Option | Description | Default |
+| :--- | :--- | :--- |
+| `NN_USE_BLAS` | Use an external BLAS library for matrix operations | `ON` |
+| `NN_NATIVE_ARCH` | Build with `-march=native` (non-portable binary) | `ON` |
+| `NN_DOUBLE_PRECISION` | Use `double` instead of `float` for `Scalar` | `OFF` |
+| `NN_SANITIZE` | Build with ASan + UBSan | `OFF` |
 
 ## Quickstart Examples
 
@@ -134,9 +152,15 @@ During training, metrics are logged to CSV files in artifact directory (`artifac
 **Visualization:**
 Monitor training in real-time by targeting the artifact directory with the plotting script:
 ```bash
-python live_plot.py mnist_test
+python scripts/live_plot.py mnist_test
 ```
 Or visualize the performance of the best models found by the model selection foreach outer fold computed
 ```bash
-python best_model.py mnist_test
+python scripts/best_model.py mnist_test
 ```
+
+## Notes
+* **`xor`/`xor_hot` replicate 4 distinct points 100 times**, so identical samples are in both train
+  and test. The "test" metrics is a convergence check, not a generalization measure.
+* **K-fold on `monk_*`/`mnist` shuffles across the datasets' official train/test splits.**
+  The predefined split is only used for the holdout case ($K=1$).
