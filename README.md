@@ -56,8 +56,36 @@ id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
 0,128-64,relu,softmax,he,adam,cce,128,0.001,0.0,0.0,0.9
 ```
 
-**Constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require
-`MSE`; `Softmax` is not valid as a hidden activation.
+Blank lines and lines beginning with `#` are ignored, so a grid can document what each
+block of models is testing — and a single model can be commented out without deleting it:
+
+```csv
+# --- Optimiser comparison, each at its own native learning rate ---
+0,4,tanh,softmax,glorot,sgd,cce,0,0.5,0,0.85,0.9
+#1,4,tanh,softmax,glorot,rmsprop,cce,0,0.01,0,0.9,0.9   <- skipped
+2,4,tanh,softmax,glorot,adam,cce,0,0.01,0,0.0,0.9
+```
+
+### Hyperparameters correlation
+
+**`alpha` means two different things, while Adam uses `beta1`:**
+
+| Optimizer | `alpha` | `beta1` | Sensible range |
+| :--- | :--- | :--- | :--- |
+| `SGD` | momentum coefficient | unused | `0.8`–`0.95` (`0` = plain SGD) |
+| `RMSProp` | decay of the squared-gradient average | unused | `0.9`–`0.99` |
+| `Adam` | **unused** | first-moment decay | `0.9`–`0.99` |
+
+**`eta` is not comparable across optimizers.** `SGD` needs a larger rate than adaptive methods. Note that `eta` is the *initial* rate: it decays linearly to 1% of it over 80% of the epochs.
+
+**`init` should match `hidden`.** `He` is derived for `ReLU`; `Glorot` and `LeCun` are derived for symmetric saturating
+activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
+
+**`lambda` is applied per mini-batch,** so the decay accumulated per epoch scales with the number of batches.
+
+**`activation` + `loss` constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require `MSE`; `Softmax` is not valid as a hidden activation.
+
+**`output` + `loss` follows the label encoding.** `Softmax`+`CCE` models the outputs as one distribution and works for one-hot targets; `Sigmoid`+`BCE` treats them as independent, non mutually exclusive labels.
 
 
 ## CLI Options

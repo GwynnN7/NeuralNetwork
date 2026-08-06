@@ -29,9 +29,20 @@ if [ -n "$2" ]; then
     NAME="$2"
 fi
 
-GRID_FILE="grids/grid.csv"
 if [ -n "$3" ]; then
     GRID_FILE="grids/$3.csv"
+else
+    GRID_FILE="grids/$1.csv"
+fi
+
+if [ ! -f "$GRID_FILE" ]; then
+    echo "[Error] Grid file not found: $GRID_FILE"
+    exit 1
+fi
+
+LAUNCHER=""
+if command -v booster >/dev/null 2>&1; then
+    LAUNCHER="booster"
 fi
 
 clear
@@ -40,10 +51,29 @@ echo "[2] Live Plot"
 echo "[3] Best Model"
 echo "[4] Kill Process"
 
-booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" \
+$LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" \
     --params $GRID_FILE --train --shuffle \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K --epochs $EPOCHS --patience $PATIENCE &
+
+
+NN_PATTERN="NeuralNet $1 --name $NAME --params"
+NN_PID=""
+# Wait for the NeuralNet process to start and get its PID
+for _ in $(seq 1 100); do
+    for pid in $(pgrep -f -- "$NN_PATTERN"); do
+        if [ "$(<"/proc/$pid/comm")" = "NeuralNet" ]; then
+            NN_PID="$pid"
+            break 2
+        fi
+    done
+    sleep 0.1
+done
+
+if [ -z "$NN_PID" ]; then
+    echo "[Error] Could not find the NeuralNet process"
+    exit 1
+fi
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &
@@ -57,22 +87,21 @@ run_live_plot
 
 while true; do
     if read -t 1 -n 1 -s key; then
-        PID=$(pgrep "NeuralNet" | head -n 1)
-        if [ -z "$PID" ]; then
+        if ! kill -0 "$NN_PID" 2>/dev/null; then
             break
         fi
 
         if [[ $key == "1" ]]; then
-            kill -SIGUSR1 "$PID"
+            kill -SIGUSR1 "$NN_PID"
         elif [[ $key == "2" ]]; then
             run_live_plot
         elif [[ $key == "3" ]]; then
             run_best_model
         elif [[ $key == "4" ]]; then
-            kill -SIGINT "$PID"
+            kill -SIGINT "$NN_PID"
         fi
     fi
-    if ! pgrep "NeuralNet" > /dev/null; then
+    if ! kill -0 "$NN_PID" 2>/dev/null; then
         break
     fi
 done

@@ -16,4 +16,9 @@ if [ -n "$2" ]; then
     NAME="$2"
 fi
 
-booster ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME"
+LAUNCHER=""
+if command -v booster >/dev/null 2>&1; then
+    LAUNCHER="booster"
+fi
+
+$LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME"
