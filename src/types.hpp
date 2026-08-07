@@ -23,10 +23,10 @@ using ActivationFunction = std::function<Matrix(const Matrix&)>;
 // Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
 // Define a small epsilon value to avoid log(0) in loss functions (that works for both float and double, *8 is a safety for single precision)
-inline constexpr Scalar LOSS_EPS = std::numeric_limits<Scalar>::epsilon() * 8;
+inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
 
 // Define a relative tolerance for early stopping
-inline constexpr Scalar ES_REL_TOL = 0.001;
+inline constexpr Scalar ES_TOLERANCE = 0.001;
 // Define the frequency of logging metrics to a file during training
 inline constexpr int LOG_FREQ = 25;
 // Sliding window to score models during model selection
@@ -73,12 +73,12 @@ enum class InitType { RANDOM,
 
 enum class DatasetType { XOR,
                          XOR_HOT,
-                         MONK_1,
-                         MONK_1_HOT,
-                         MONK_2,
-                         MONK_2_HOT,
-                         MONK_3,
-                         MONK_3_HOT,
+                         MONK1,
+                         MONK1_HOT,
+                         MONK2,
+                         MONK2_HOT,
+                         MONK3,
+                         MONK3_HOT,
                          MNIST };
 
 namespace Maps {
@@ -117,24 +117,24 @@ const std::map<OptimizerType, std::string> optimizer_to_str = {
 const std::map<DatasetType, std::string> dataset_to_str = {
     {DatasetType::XOR, "XOR"},
     {DatasetType::XOR_HOT, "XOR_HOT"},
-    {DatasetType::MONK_1, "MONK_1"},
-    {DatasetType::MONK_1_HOT, "MONK_1_HOT"},
-    {DatasetType::MONK_2, "MONK_2"},
-    {DatasetType::MONK_2_HOT, "MONK_2_HOT"},
-    {DatasetType::MONK_3, "MONK_3"},
-    {DatasetType::MONK_3_HOT, "MONK_3_HOT"},
+    {DatasetType::MONK1, "MONK1"},
+    {DatasetType::MONK1_HOT, "MONK1_HOT"},
+    {DatasetType::MONK2, "MONK2"},
+    {DatasetType::MONK2_HOT, "MONK2_HOT"},
+    {DatasetType::MONK3, "MONK3"},
+    {DatasetType::MONK3_HOT, "MONK3_HOT"},
     {DatasetType::MNIST, "MNIST"},
 };
 
 const std::map<std::string, DatasetType> str_to_dataset{
     {"xor", DatasetType::XOR},
     {"xor_hot", DatasetType::XOR_HOT},
-    {"monk_1", DatasetType::MONK_1},
-    {"monk_1_hot", DatasetType::MONK_1_HOT},
-    {"monk_2", DatasetType::MONK_2},
-    {"monk_2_hot", DatasetType::MONK_2_HOT},
-    {"monk_3", DatasetType::MONK_3},
-    {"monk_3_hot", DatasetType::MONK_3_HOT},
+    {"MONK1", DatasetType::MONK1},
+    {"MONK1_hot", DatasetType::MONK1_HOT},
+    {"MONK2", DatasetType::MONK2},
+    {"MONK2_hot", DatasetType::MONK2_HOT},
+    {"MONK3", DatasetType::MONK3},
+    {"MONK3_hot", DatasetType::MONK3_HOT},
     {"mnist", DatasetType::MNIST},
 };
 

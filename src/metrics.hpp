@@ -73,7 +73,7 @@ struct MetricsResult {
     size_t size() const { return epochs.size(); }
     Scalar last_loss() const { return epochs.back().loss; }
 
-    void print(TaskType task) const {
+    void print(bool track_accuracy) const {
         if (empty()) {
             std::println(" • (no metrics recorded)");
             return;
@@ -81,7 +81,7 @@ struct MetricsResult {
         auto mean = [this](Scalar EpochMetric::* field) {
             return std::accumulate(epochs.begin(), epochs.end(), Scalar(0), [field](Scalar acc, const EpochMetric& e) { return acc + e.*field; }) / epochs.size();
         };
-        if (task == TaskType::CLASSIFICATION) {
+        if (track_accuracy) {
             std::println(" • Accuracy:   {:.2f}%", mean(&EpochMetric::accuracy) * 100.0);
         }
         std::println(" • Loss: {:.3f}", mean(&EpochMetric::loss));
@@ -193,13 +193,17 @@ struct SelectionScore {
 struct SplitResults {
     MetricsResult train_metrics;
     MetricsResult test_metrics;
-    TaskType task = TaskType::REGRESSION;
+    TaskType task;
+
+    SplitResults(TaskType task_type = TaskType::REGRESSION) : task(task_type) {};
 
     // Call the add method for both train_metrics and test_metrics
     void add(const SplitResults& other) {
+        if (task != other.task) {
+            throw std::invalid_argument("Cannot add SplitResults with different task types");
+        }
         train_metrics.add(other.train_metrics);
         test_metrics.add(other.test_metrics);
-        task = other.task;
     }
 
     // Call the average method for both train_metrics and test_metrics
@@ -208,12 +212,14 @@ struct SplitResults {
         test_metrics.average();
     }
 
-    void print(TaskType task) const {
+    void print() const {
         std::println("\nTraining Set Metrics:");
-        train_metrics.print(task);
+        train_metrics.print(track_accuracy());
         std::println("Test Set Metrics:");
-        test_metrics.print(task);
+        test_metrics.print(track_accuracy());
     }
+
+    bool track_accuracy() const { return task == TaskType::CLASSIFICATION; }
 
     // The score is the lowest, over all sliding windows, of the worst penalty within the window
     // To avoid comparing different losses that are on different scales, the error rate is used for model selection. Regression uses MSE
@@ -231,9 +237,8 @@ struct SplitResults {
             return invalid;
         }
 
-        const bool classification = (task == TaskType::CLASSIFICATION);
-        auto epoch_score = [classification](const EpochMetric& e) {
-            return classification ? SelectionScore{Scalar(1) - e.accuracy, e.brier} : SelectionScore{e.loss, e.loss};
+        auto epoch_score = [this](const EpochMetric& e) {
+            return track_accuracy() ? SelectionScore{Scalar(1) - e.accuracy, e.brier} : SelectionScore{e.loss, e.loss};
         };
 
         // Determine the size of the sliding window, which is the minimum of SELECTION_WINDOW and the number of epochs

@@ -155,19 +155,12 @@ void Network::backward(const Matrix& output_gradient) {
 
 // Train the network using the dataset provided by the model_set
 SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
-    // File logging handling
-    std::ofstream log_file;
-    if (ctx.logging) {
-        std::string log_filename = std::format("{}/outer{}_{}m{}.csv", MODEL_PATH, ctx.outer_index, ctx.in_model_selection ? "inner_" : "", ctx.model_id);
-        bool is_first_write = !ctx.in_model_selection || ctx.inner_index == 0;
-        log_file.open(log_filename, is_first_write ? std::ios::trunc : std::ios::app);
-        if (!log_file.is_open()) {
-            throw std::runtime_error("Failed to open log file for writing: " + log_filename);
-        }
-        if (is_first_write) {
-            log_file << "epoch,train_loss,test_loss,train_acc,test_acc\n";
-        }
-    }
+    // Run constants
+    const bool is_first_run = !ctx.in_model_selection || ctx.inner_index == 0;
+
+    // Logging and metrics variables
+    SplitResults split_results(model.task);
+    int logged_epoch = 0;
 
     // Validate the split
     const int input_size = static_cast<int>(indices.train_indices.size());
@@ -183,16 +176,19 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;
     const int num_batches = (input_size + current_batch_size - 1) / current_batch_size;
 
-    // Logging and metrics variables
-    SplitResults split_results;
-    split_results.task = model.task;
-    int logged_epoch = 0;
-    const bool track_accuracy = (model.task == TaskType::CLASSIFICATION);
-
-    // Flush every epoch up to log file
+    // Logging setup
+    std::ofstream log_file;
     auto flush_log = [&](int upto_epoch) {
+        const std::string log_filename = std::format("{}/outer{}_{}m{}.csv", MODEL_PATH, ctx.outer_index, ctx.in_model_selection ? "inner_" : "", ctx.model_id);
+
         if (!log_file.is_open()) {
-            return;
+            log_file.open(log_filename, is_first_run ? std::ios::trunc : std::ios::app);
+            if (!log_file.is_open()) {
+                throw std::runtime_error("Failed to open log file: " + log_filename);
+            }
+            if (is_first_run) {
+                log_file << "epoch,train_loss,test_loss,train_acc,test_acc\n";
+            }
         }
         // Sync the logged epoch with the available metrics
         const int available = static_cast<int>(std::min(split_results.train_metrics.size(), split_results.test_metrics.size()));
@@ -256,7 +252,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
             Matrix batch_prediction = forward(batch_features);
 
             // Calculate the loss and accuracy for the current batch and accumulate for the epoch
-            batch_metrics.add(batch_labels, batch_prediction, loss_func, track_accuracy);
+            batch_metrics.add(batch_labels, batch_prediction, loss_func, split_results.track_accuracy());
 
             // Start the backward pass to update weights and biases based on the output loss gradient
             backward(loss_derivative(batch_labels, batch_prediction));
@@ -273,17 +269,17 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         }
 
         // Evaluate the model on the test set and calculate the loss and accuracy
-        const bool need_test_metrics = (ctx.patience > 0 && ctx.in_model_selection) || ctx.logging;
-        if (need_test_metrics) {
+        const bool predict_test = (ctx.patience > 0 && ctx.in_model_selection) || ctx.logging;
+        if (predict_test) {
             Matrix test_prediction = predict(test_features);
-            split_results.test_metrics.append(test_labels, test_prediction, loss_func, track_accuracy);
+            split_results.test_metrics.append(test_labels, test_prediction, loss_func, split_results.track_accuracy());
         }
 
         // Early stopping logic based on the patience parameter
         if (ctx.patience > 0) {
             Scalar current_loss = ctx.in_model_selection ? split_results.test_metrics.last_loss() : split_results.train_metrics.last_loss();
             // If the current loss is better than the best loss so far (with tolerance), reset the patience counter and save the model parameters
-            if (i == 0 || current_loss < patience_loss - std::abs(patience_loss) * ES_REL_TOL) {
+            if (i == 0 || current_loss < patience_loss - std::abs(patience_loss) * ES_TOLERANCE) {
                 epochs_without_improvement = 0;
                 patience_loss = current_loss;
                 snapshotParameters(); // Save the current parameters as the best epoch
@@ -317,12 +313,15 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     }
 
     // Write final epochs to the log file
-    flush_log(ctx.epochs - 1);
+    if (ctx.logging) {
+        flush_log(ctx.epochs - 1);
+        if (log_file.is_open()) {
+            log_file.close();
+        }
+    }
 
     model.eta = initial_eta; // Restore the configured learning rate after decay
     early_stop_flag = 0;     // Reset the early stop flag for the next fold
-    if (log_file.is_open()) {
-        log_file.close();
-    }
+
     return split_results;
 }

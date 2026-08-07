@@ -53,7 +53,7 @@ echo "[2] Live Plot"
 echo "[3] Best Model"
 echo "[4] Kill Process"
 
-$LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --params $GRID_FILE \
+$LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --train --shuffle --seed $SEED \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K \

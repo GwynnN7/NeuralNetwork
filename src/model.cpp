@@ -2,6 +2,7 @@
 
 #include "network.hpp"
 #include "types.hpp"
+#include "utility.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -14,53 +15,9 @@
 #include <string>
 #include <vector>
 
-namespace {
-// Trim leading and trailing whitespace from a string
-std::string trim(const std::string& s) {
-    const auto begin = s.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) {
-        return {};
-    }
-    const auto end = s.find_last_not_of(" \t\r\n");
-    return s.substr(begin, end - begin + 1);
-}
-
-// Parse a full cell as an integer
-int parse_int(const std::string& cell, const std::string& action, int row_number) {
-    try {
-        size_t size = 0;
-        const int value = std::stoi(cell, &size);
-        if (size != cell.size()) {
-            throw std::invalid_argument("Trailing characters in cell");
-        }
-        return value;
-    } catch (const std::exception&) {
-        throw std::runtime_error("Grid row " + std::to_string(row_number) + ": '" + cell + "' is not a valid integer for " + action);
-    }
-}
-
-Scalar parse_scalar(const std::string& cell, const std::string& action, int row_number) {
-    try {
-        size_t size = 0;
-        const double value = std::stod(cell, &size);
-        if (size != cell.size()) {
-            throw std::invalid_argument("Trailing characters in cell");
-        }
-        return static_cast<Scalar>(value);
-    } catch (const std::exception&) {
-        throw std::runtime_error("Grid row " + std::to_string(row_number) + ": '" + cell + "' is not a valid number for " + action);
-    }
-}
-} // namespace
-
 // Load a grid search of models from a CSV file
 std::vector<Model> Model::load_grid_search(const std::string& filename) {
     std::vector<Model> grid_search;
-    std::ifstream file(filename);
-
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open grid search file: " + filename);
-    }
 
     // Helper lambda function to convert a string to lowercase for case-insensitive mapping
     auto to_lower = [](std::string s) {
@@ -68,33 +25,10 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         return s;
     };
 
-    std::string line;
-    bool header_found = false;
-    int row_number = 0;
-
-    while (std::getline(file, line)) {
-        row_number++;
-
-        // Skip empty lines, lines that contain only whitespace, and '#' comments
-        const size_t first_char = line.find_first_not_of(" \t\r");
-        if (first_char == std::string::npos || line[first_char] == '#') {
-            continue;
-        }
-
-        // Skip the header line if it contains non-numeric characters.
-        if (!header_found) {
-            header_found = true;
-            if (!std::isdigit(static_cast<unsigned char>(line[first_char])))
-                continue;
-        }
-
-        // Load the row of the CSV into a vector of strings, splitted by commas
-        std::vector<std::string> row;
-        std::stringstream ss(line);
-        std::string cell;
-        while (std::getline(ss, cell, ',')) {
-            row.push_back(trim(cell));
-        }
+    // Read the CSV file and parse each row into a Model object
+    for (const CsvRow& csv_row : load_csv(filename, ',', true)) {
+        const std::vector<std::string>& row = csv_row.cells;
+        const int row_number = csv_row.line;
 
         // Validate that the row has the expected number of columns. The 12th (beta1) column is optional
         if (row.size() != HYPERPARAMS_NUM && row.size() != HYPERPARAMS_NUM_OPT) {
@@ -102,13 +36,13 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         }
 
         Model model;
-        model.id = parse_int(row[0], "id", row_number);
+        model.id = parse_cell<int>(row[0], filename, row_number, "id");
 
         // Parse the network structure from the second column (e.g., "64-32-10" for a network with 3 hidden layers).
         std::string num;
         std::stringstream struct_ss(row[1]);
         while (std::getline(struct_ss, num, '-')) {
-            const int neurons = parse_int(trim(num), "layer size", row_number);
+            const int neurons = parse_cell<int>(trim(num), filename, row_number, "layer size");
             if (neurons <= 0) {
                 throw std::runtime_error("Grid row " + std::to_string(row_number) + ": layer sizes must be positive");
             }
@@ -129,11 +63,11 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": unknown activation, init, optimizer or loss name");
         }
 
-        model.batch_size = parse_int(row[7], "batch", row_number);
-        model.eta = parse_scalar(row[8], "eta", row_number);
-        model.lambda = parse_scalar(row[9], "lambda", row_number);
-        model.alpha = parse_scalar(row[10], "alpha", row_number);
-        model.beta1 = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_scalar(row[11], "beta1", row_number) : ADAM_B1;
+        model.batch_size = parse_cell<int>(row[7], filename, row_number, "batch");
+        model.eta = parse_cell<Scalar>(row[8], filename, row_number, "eta");
+        model.lambda = parse_cell<Scalar>(row[9], filename, row_number, "lambda");
+        model.alpha = parse_cell<Scalar>(row[10], filename, row_number, "alpha");
+        model.beta1 = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_cell<Scalar>(row[11], filename, row_number, "beta1") : ADAM_B1;
 
         // Avoid out-of-range hyperparameters
         if (model.batch_size < 0) {

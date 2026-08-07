@@ -15,7 +15,7 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
     * `Linear Decay` of `Learning Rate`.
     * `Early Stopping` with `Patience`.
-* **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK_1(_HOT)`, `MONK_2(_HOT)`, `MONK_3(_HOT)`.
+* **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK1(_HOT)`, `MONK2(_HOT)`, `MONK3(_HOT)`.
     * The `_HOT` datasets are one-hot encoded versions of the original datasets.
 * **Logging & Visualization**: 
     * `CSV` logging of per-fold loss and accuracy.
@@ -24,7 +24,7 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 
 ## Configuration
 
-Network parameters are defined in a CSV file passed to the `--params` argument. 
+Network parameters are defined in a CSV file passed to the `--grid` argument. 
 
 **Format (`dataset/<dataset>/grid.csv`):**
 
@@ -108,8 +108,8 @@ Selection never compares training losses: they are not on the same scale across 
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
-| `dataset` | Dataset type: `xor`, `xor_hot`, `monk_1(_hot)`, `monk_2(_hot)`, `monk_3(_hot)`, `mnist` | *Required* |
-| `--params` | Path to CSV file containing model configurations for grid search | `grids/grid.csv` |
+| `dataset` | Dataset type: `xor`, `xor_hot`, `MONK1(_hot)`, `MONK2(_hot)`, `MONK3(_hot)`, `mnist` | *Required* |
+| `--grid` | Path to CSV file containing model configurations for grid search | `grids/grid.csv` |
 | `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
 | `--train` | Flag to execute the training & cross-validation loop | `false` |
 | `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
@@ -169,7 +169,7 @@ Run a 2x2 nested K-fold cross-validation on 40% of the MNIST dataset, evaluating
     --name mnist_test \
     --train \
     --dump \
-    --params grids/grid.csv \
+    --grid grids/grid.csv \
     --dataset_ratio 0.4 \
     --inner-k 2 \
     --outer-k 2 \

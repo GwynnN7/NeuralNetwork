@@ -9,46 +9,13 @@
 #include <istream>
 #include <numeric>
 #include <print>
-#include <sstream>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 namespace Loader {
-// MNIST utility functions for reading data
-namespace MNIST {
-constexpr int MNIST_IMAGE_MAGIC = 2051;
-constexpr int MNIST_LABEL_MAGIC = 2049;
-// MNIST files are big-endian, need to swap on little-endian systems
-std::int32_t swap_endian(std::int32_t value) {
-    if constexpr (std::endian::native == std::endian::little) {
-        return static_cast<std::int32_t>(std::byteswap(static_cast<std::uint32_t>(value)));
-    }
-    return value;
-}
-// Read exactly 'bytes' bytes from the input stream
-void read_exact(std::istream& in, void* dest, std::size_t bytes, const std::string& path, const char* action) {
-    in.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(bytes));
-    if (!in || in.gcount() != static_cast<std::streamsize>(bytes)) {
-        throw std::runtime_error("Error processing " + path + " while reading " + action);
-    }
-}
-// Read a big-endian integer from the input stream
-int read_mnist_int(std::istream& in, const std::string& path, const char* action) {
-    int value = 0;
-    read_exact(in, &value, sizeof(value), path, action);
-    return swap_endian(value);
-}
-// Take a subset of the total number of samples based on the dataset_ratio, ensuring at least one sample is returned
-int sample_subset(int total, Scalar dataset_ratio) {
-    if (total <= 0) {
-        throw std::runtime_error("Invalid total number of samples: " + std::to_string(total));
-    }
-    const int scaled = static_cast<int>(total * dataset_ratio);
-    return std::max(1, std::min(scaled, total));
-}
-} // namespace MNIST
 
+// One-hot encode the raw labels into a binary matrix
 Matrix one_hot_encode(const Matrix& raw_labels, int num_classes) {
     // Initialize a zero matrix for one-hot encoding
     Matrix one_hot_labels = Matrix::Zero(raw_labels.size(), num_classes);
@@ -63,6 +30,52 @@ Matrix one_hot_encode(const Matrix& raw_labels, int num_classes) {
     return one_hot_labels;
 }
 
+// Build a ColMajor Matrix from row-major data, so the rest of the framework can use it
+Matrix to_matrix(const std::vector<Scalar>& flat, int rows, int cols) {
+    auto row_major = Eigen::Map<const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(flat.data(), rows, cols);
+    return Matrix(row_major);
+}
+
+// MNIST utility functions for reading data
+namespace MNIST {
+// MNIST file magic numbers
+constexpr int MNIST_IMAGE_MAGIC = 2051;
+constexpr int MNIST_LABEL_MAGIC = 2049;
+
+// MNIST files are big-endian, need to swap on little-endian systems
+std::int32_t swap_endian(std::int32_t value) {
+    if constexpr (std::endian::native == std::endian::little) {
+        return static_cast<std::int32_t>(std::byteswap(static_cast<std::uint32_t>(value)));
+    }
+    return value;
+}
+
+// Read 'size' bytes from the input stream
+void read_bytes(std::istream& in, void* dest, std::size_t size, const std::string& path, const char* tag) {
+    in.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(size));
+    // Check if the expected number of bytes was read
+    if (!in || in.gcount() != static_cast<std::streamsize>(size)) {
+        throw std::runtime_error("Error for file " + path + " while reading " + tag);
+    }
+}
+
+// Read a big-endian integer from the input stream
+int read_int(std::istream& in, const std::string& path, const char* tag) {
+    int value = 0;
+    read_bytes(in, &value, sizeof(value), path, tag);
+    return swap_endian(value);
+}
+
+// Take a subset of the total number of samples based on the dataset_ratio
+int sample_subset(int total, Scalar dataset_ratio) {
+    if (total <= 0) {
+        throw std::runtime_error("Invalid total number of samples: " + std::to_string(total));
+    }
+    const int scaled = static_cast<int>(total * dataset_ratio);
+    return std::max(1, std::min(scaled, total));
+}
+
+// Load MNIST images from the specified file path and normalize pixel values to [0, 1]
 Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -70,14 +83,14 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     }
 
     // Read the magic number and validate it
-    if (MNIST::read_mnist_int(file, path, "magic number") != MNIST::MNIST_IMAGE_MAGIC) {
+    if (MNIST::read_int(file, path, "magic number") != MNIST::MNIST_IMAGE_MAGIC) {
         throw std::runtime_error("Invalid MNIST image file: " + path);
     }
 
     // Read the number of images, rows, and columns
-    const int total_images = MNIST::read_mnist_int(file, path, "image count");
-    const int num_rows = MNIST::read_mnist_int(file, path, "row count");
-    const int num_cols = MNIST::read_mnist_int(file, path, "column count");
+    const int total_images = MNIST::read_int(file, path, "image count");
+    const int num_rows = MNIST::read_int(file, path, "row count");
+    const int num_cols = MNIST::read_int(file, path, "column count");
     if (num_rows <= 0 || num_cols <= 0) {
         throw std::runtime_error("Invalid MNIST image dimensions in " + path);
     }
@@ -88,7 +101,7 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
 
     // Read the raw pixel data
     std::vector<unsigned char> raw_pixels(static_cast<std::size_t>(num_images) * image_size);
-    MNIST::read_exact(file, raw_pixels.data(), raw_pixels.size(), path, "pixel data");
+    MNIST::read_bytes(file, raw_pixels.data(), raw_pixels.size(), path, "pixel data");
 
     // Normalize pixel values to the range [0, 1] and store them in a matrix
     Matrix normalized_images(num_images, image_size);
@@ -100,6 +113,7 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     return normalized_images;
 }
 
+// Load MNIST labels from the specified file path and convert them to one-hot encoding
 Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -107,17 +121,17 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     }
 
     // Read the magic number and validate it
-    if (MNIST::read_mnist_int(file, path, "magic number") != MNIST::MNIST_LABEL_MAGIC) {
+    if (MNIST::read_int(file, path, "magic number") != MNIST::MNIST_LABEL_MAGIC) {
         throw std::runtime_error("Invalid MNIST label file: " + path);
     }
 
     // Read the number of labels and define a subset based on the dataset ratio
-    const int total_labels = MNIST::read_mnist_int(file, path, "label count");
+    const int total_labels = MNIST::read_int(file, path, "label count");
     const int num_labels = MNIST::sample_subset(total_labels, dataset_ratio);
 
     // Read the raw label data
     std::vector<unsigned char> raw_labels(static_cast<std::size_t>(num_labels));
-    MNIST::read_exact(file, raw_labels.data(), raw_labels.size(), path, "label data");
+    MNIST::read_bytes(file, raw_labels.data(), raw_labels.size(), path, "label data");
 
     // Convert the unsigned char vector into an Eigen Scalar Matrix
     Matrix scalar_labels(num_labels, 1);
@@ -128,108 +142,73 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     // Convert to one-hot encoding
     return one_hot_encode(scalar_labels, 10);
 }
+} // namespace MNIST
 
-Matrix load_csv(const std::string& filename) {
-    std::ifstream file(filename);
-    std::string line, cell;
-    std::vector<Scalar> values;
-    int rows = 0, cols = 0;
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file: " + filename);
-    }
+namespace XOR {
+constexpr int XOR_NUM_FEATURES = 2; // Number of features in the XOR dataset
+constexpr int XOR_NUM_LABELS = 1;   // Number of classes in the XOR dataset
+constexpr int XOR_NUM_COLS = XOR_NUM_FEATURES + XOR_NUM_LABELS;
 
-    while (std::getline(file, line)) {
-        std::stringstream lineStream(line);
-        int current_cols = 0;
-        // Read each cell in the line (split by commas), convert to Scalar, and store in values
-        while (std::getline(lineStream, cell, ',')) {
-            try {
-                values.push_back(static_cast<Scalar>(std::stod(cell)));
-            } catch (const std::invalid_argument& e) {
-                throw std::runtime_error("Invalid number in dataset: " + cell);
-            }
-            current_cols++;
+// Load XOR dataset from a CSV file: 2 feature columns followed by the label column
+Matrix load_xor(const std::string& filename) {
+    const std::vector<CsvRow> rows = load_csv(filename);
+
+    std::vector<Scalar> flat;
+    flat.reserve(rows.size() * XOR_NUM_COLS);
+    for (const CsvRow& row : rows) {
+        if (static_cast<int>(row.cells.size()) != XOR_NUM_COLS) {
+            throw std::runtime_error("Wrong number of columns in XOR dataset file " + filename);
         }
-        if (cols == 0) {
-            cols = current_cols;
-        } else if (cols != current_cols) {
-            throw std::runtime_error("Invalid number of columns in dataset.");
+        for (const std::string& cell : row.cells) {
+            flat.push_back(parse_cell<Scalar>(cell, filename, row.line));
         }
-        rows++;
     }
-    file.close();
-
-    auto row_major_map = Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(values.data(), rows, cols);
-    // Copy the mapped data into a new ColMajor matrix to ensure compatibility with the rest of the framework
-    Matrix col_major = row_major_map;
-    return col_major;
+    return to_matrix(flat, static_cast<int>(rows.size()), XOR_NUM_COLS);
 }
+} // namespace XOR
 
+namespace MONK {
+constexpr int MONK_NUM_FEATURES = 6;                           // Number of categorical features in the MONK dataset
+constexpr int MONK_NUM_LABELS = 1;                             // Number of classes in the MONK dataset
+const std::vector<int> feature_hot_sizes = {3, 3, 2, 3, 4, 2}; // Sizes of the one-hot encoded features for each categorical feature
+
+// Load MONK dataset from file
 Matrix load_monk(const std::string& filename, Scalar dataset_ratio) {
-    std::ifstream file(filename);
-    std::string line, cell;
-    std::vector<Scalar> values;
-    int rows = 0;
+    const int one_hot_width = std::accumulate(feature_hot_sizes.begin(), feature_hot_sizes.end(), 0);
+    const int out_cols = MONK_NUM_LABELS + one_hot_width;
 
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file: " + filename);
-    }
+    const std::vector<CsvRow> rows = load_csv(filename, ' ');
 
-    // Define the sizes of the one-hot encoded features for each categorical feature
-    std::vector<int> feature_hot_sizes = {3, 3, 2, 3, 4, 2};
-
-    // Expected cols have to be 1 label column + one column per one-hot slot
-    const int expected_cols = 1 + std::accumulate(feature_hot_sizes.begin(), feature_hot_sizes.end(), 0);
-
-    while (std::getline(file, line)) {
-        // Skip blank and whitespace lines
-        if (line.find_first_not_of(" \t\r\n") == std::string::npos) {
-            continue;
+    std::vector<Scalar> flat;
+    flat.reserve(rows.size() * out_cols);
+    for (const CsvRow& row : rows) {
+        if (static_cast<int>(row.cells.size()) < MONK_NUM_LABELS + MONK_NUM_FEATURES) {
+            throw std::runtime_error(filename + " line " + std::to_string(row.line) + ": expected at least " +
+                                     std::to_string(MONK_NUM_LABELS + MONK_NUM_FEATURES) + " fields, found " + std::to_string(row.cells.size()));
         }
 
-        std::stringstream lineStream(line);
-        int current_cols = 0;
+        // Column 0 is the class label
+        flat.push_back(parse_cell<Scalar>(row.cells[0], filename, row.line));
 
-        while (lineStream >> cell) {
-            if (current_cols == 7) { // Skip the last column (tag)
-                break;
+        // Columns 1-6 are the categorical features
+        for (int col = 0; col < MONK_NUM_FEATURES; ++col) {
+            const int width = feature_hot_sizes[col];
+            const int value = static_cast<int>(parse_cell<Scalar>(row.cells[col + 1], filename, row.line));
+            if (value < 1 || value > width) {
+                throw std::runtime_error(filename + " line " + std::to_string(row.line) + ": attribute a" + std::to_string(col + 1) +
+                                         " is " + std::to_string(value) + ", expected 1.." + std::to_string(width));
             }
-            try {
-                Scalar val = static_cast<Scalar>(std::stod(cell));
-                if (current_cols == 0) {
-                    values.push_back(val);
-                } else {
-                    // One-hot encode the categorical features based on their respective sizes
-                    int num_features = feature_hot_sizes[current_cols - 1];
-                    if (val < 1 || static_cast<int>(val) > num_features) {
-                        throw std::runtime_error("MONK attribute " + std::to_string(current_cols) + " out of range in " + filename + ": " + cell);
-                    }
-                    for (int i = 1; i <= num_features; ++i) {
-                        values.push_back((i == static_cast<int>(val)) ? 1.0 : 0.0);
-                    }
-                }
-            } catch (const std::invalid_argument&) {
-                throw std::runtime_error("Invalid number in dataset: " + cell);
+            for (int j = 1; j <= width; ++j) {
+                flat.push_back(j == value ? Scalar(1) : Scalar(0));
             }
-            current_cols++;
         }
-        if (current_cols != 7) {
-            throw std::runtime_error("Invalid number of columns in MONK dataset: " + filename);
-        }
-        rows++;
-    }
-    file.close();
-
-    if (rows == 0 || static_cast<int>(values.size()) != rows * expected_cols) {
-        throw std::runtime_error("Error loading MONK dataset: " + filename);
     }
 
-    const int kept_rows = std::max(1, std::min(rows, static_cast<int>(rows * dataset_ratio)));
-    auto row_major_map = Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(values.data(), rows, expected_cols).topRows(kept_rows);
-    // Copy the mapped data into a new ColMajor matrix to ensure compatibility with the rest of the framework
-    Matrix col_major = row_major_map;
-    return col_major;
+    const int total_rows = static_cast<int>(rows.size());
+    const int kept_rows = std::max(1, std::min(total_rows, static_cast<int>(total_rows * dataset_ratio)));
+    return to_matrix(flat, total_rows, out_cols).topRows(kept_rows);
 }
+} // namespace MONK
 } // namespace Loader
 
 void Dataset::print_info() const {
@@ -248,7 +227,7 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
     switch (dataset_type) {
     case DatasetType::XOR:
     case DatasetType::XOR_HOT: {
-        Matrix xor_data = Loader::load_csv("dataset/xor/xor.csv").transpose();
+        Matrix xor_data = Loader::XOR::load_xor("dataset/xor/xor.csv").transpose();
 
         // Split the data into features and labels
         Matrix features = xor_data.topRows(xor_data.rows() - 1);
@@ -257,29 +236,35 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         // Replicate the dataset to create a larger dataset for training and testing (task set to regression for XOR and classification for XOR_HOT)
         return Dataset{dataset_type, dataset_type == DatasetType::XOR ? TaskType::REGRESSION : TaskType::CLASSIFICATION, features.replicate(1, 100), labels.replicate(1, 100)};
     };
-    case DatasetType::MONK_1:
-    case DatasetType::MONK_1_HOT:
-    case DatasetType::MONK_2:
-    case DatasetType::MONK_2_HOT:
-    case DatasetType::MONK_3:
-    case DatasetType::MONK_3_HOT: {
-        const char monk_dataset_number = Maps::dataset_to_str.at(dataset_type)[5]; // Extract the dataset number from the enum name
-        Matrix monk_train = Loader::load_monk(std::format("dataset/monk/monks-{}.train", monk_dataset_number), dataset_ratio).transpose();
-        Matrix monk_test = Loader::load_monk(std::format("dataset/monk/monks-{}.test", monk_dataset_number), dataset_ratio).transpose();
+    case DatasetType::MONK1:
+    case DatasetType::MONK1_HOT:
+    case DatasetType::MONK2:
+    case DatasetType::MONK2_HOT:
+    case DatasetType::MONK3:
+    case DatasetType::MONK3_HOT: {
+        // Extract the dataset number from the enum name and search for the corresponding MONK dataset file
+        const std::string& monk_name = Maps::dataset_to_str.at(dataset_type);
+        const size_t digit_pos = monk_name.find_first_of("0123456789");
+        if (digit_pos == std::string::npos) {
+            throw std::invalid_argument("MONK dataset name has no problem number: " + monk_name);
+        }
+        const char monk_dataset_number = monk_name[digit_pos];
+        Matrix monk_train = Loader::MONK::load_monk(std::format("dataset/monk/monks-{}.train", monk_dataset_number), dataset_ratio).transpose();
+        Matrix monk_test = Loader::MONK::load_monk(std::format("dataset/monk/monks-{}.test", monk_dataset_number), dataset_ratio).transpose();
         Matrix monk_data(monk_train.rows(), monk_train.cols() + monk_test.cols());
         monk_data << monk_train, monk_test;
 
         Matrix features = monk_data.bottomRows(monk_data.rows() - 1);
-        const bool is_hot_encoded = (dataset_type == DatasetType::MONK_1_HOT || dataset_type == DatasetType::MONK_2_HOT || dataset_type == DatasetType::MONK_3_HOT);
+        const bool is_hot_encoded = (dataset_type == DatasetType::MONK1_HOT || dataset_type == DatasetType::MONK2_HOT || dataset_type == DatasetType::MONK3_HOT);
         Matrix labels = !is_hot_encoded ? monk_data.topRows(1).eval() : Loader::one_hot_encode(monk_data.topRows(1), 2).transpose();
 
         return Dataset{dataset_type, TaskType::CLASSIFICATION, std::move(features), std::move(labels), static_cast<int>(monk_train.cols())};
     };
     case DatasetType::MNIST: {
-        Matrix train_features = Loader::load_mnist_images("dataset/mnist/train-images-idx3-ubyte", dataset_ratio).transpose();
-        Matrix train_labels = Loader::load_mnist_labels("dataset/mnist/train-labels-idx1-ubyte", dataset_ratio).transpose();
-        Matrix test_features = Loader::load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
-        Matrix test_labels = Loader::load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
+        Matrix train_features = Loader::MNIST::load_mnist_images("dataset/mnist/train-images-idx3-ubyte", dataset_ratio).transpose();
+        Matrix train_labels = Loader::MNIST::load_mnist_labels("dataset/mnist/train-labels-idx1-ubyte", dataset_ratio).transpose();
+        Matrix test_features = Loader::MNIST::load_mnist_images("dataset/mnist/t10k-images-idx3-ubyte", dataset_ratio).transpose();
+        Matrix test_labels = Loader::MNIST::load_mnist_labels("dataset/mnist/t10k-labels-idx1-ubyte", dataset_ratio).transpose();
 
         // Combine training and testing datasets into a single dataset for cross-validation
         Matrix all_features(train_features.rows(), train_features.cols() + test_features.cols());
@@ -318,8 +303,10 @@ std::vector<DataSplit> DataSplit::split(int k, Scalar train_ratio, int train_sam
     // Only used for outer cross-validation. In inner cross-validation folds, the argument 'train_samples' will be passed as 0
     bool use_train_samples = (train_samples > 0 && train_samples < num_samples) && holdout_split;
 
+    // Create a vector of indices representing the samples
     std::vector<int> indices(num_samples);
     std::iota(indices.begin(), indices.end(), 0);
+
     // Don't shuffle the indices if using the original training samples for outer holdout split, to maintain the samples in the splits
     if (shuffle && !use_train_samples) {
         // Shuffle the indices to ensure random distribution of samples across folds

@@ -22,7 +22,7 @@ DataSplit main_split(const Dataset& dataset, const Args& args) {
 void train(const Dataset& dataset, const Args& args) {
     // Prepare outer folds for cross-validation and load the grid search parameters
     const std::vector<DataSplit> outer_folds = DataSplit::split(args.outer_folds, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle);
-    std::vector<Model> grid_search = Model::load_grid_search(args.model_file);
+    std::vector<Model> grid_search = Model::load_grid_search(args.grid_file);
     for (auto& grid_model : grid_search) {
         grid_model.task = dataset.task; // Assign the task type to the model based on the dataset
     }
@@ -35,8 +35,10 @@ void train(const Dataset& dataset, const Args& args) {
     for (size_t i = 0; i < outer_folds.size(); ++i) {
         const int outer_index = static_cast<int>(i);
 
-        // Prepare inner folds for model selection, on training set of the current outer fold (train_valid). Pass train_samples as 0 for inner folds since it is only relevant for outer folds
+        // Prepare inner folds for model selection, on training set of the current outer fold (train_valid)
+        // Pass train_samples as 0 for inner folds since it is only relevant for outer folds
         std::vector<DataSplit> inner_folds = DataSplit::split(args.inner_folds, args.train_ratio, 0, static_cast<int>(outer_folds[i].train_indices.size()), args.shuffle);
+
         // Remap the inner fold indices to the original dataset indices
         for (auto& inner_fold : inner_folds) {
             for (int& relative_idx : inner_fold.train_indices) {
@@ -50,14 +52,14 @@ void train(const Dataset& dataset, const Args& args) {
 
         // Variables to track the best model and its performance across inner folds
         size_t best_model_index = 0;
-        SplitResults best_model_performance;
+        SplitResults best_performance(dataset.task);
 
         // Inner loop for model selection, skipped when there is nothing to select
         for (size_t m = 0; model_selection && m < grid_search.size(); ++m) {
             const Model& grid_model = grid_search[m];
             grid_model.print(); // Print the model configuration for logging
 
-            SplitResults current_model_performance; // Metrics for the current model across inner folds
+            SplitResults current_performance(dataset.task); // Metrics for the current model across inner folds
             for (size_t j = 0; j < inner_folds.size(); ++j) {
                 // Create a new network for the current model configuration
                 Network network(grid_model, dataset.num_features, dataset.num_classes);
@@ -75,14 +77,14 @@ void train(const Dataset& dataset, const Args& args) {
 
                 // Train the model on the current inner fold
                 const SplitResults train_results = network.train(dataset, inner_folds[j], ctx);
-                current_model_performance.add(train_results); // Accumulate metrics for the current model across inner folds
+                current_performance.add(train_results); // Accumulate metrics for the current model across inner folds
             }
-            current_model_performance.average(); // Average the metrics across inner folds for the current model to get a single performance metric
+            current_performance.average(); // Average the metrics across inner folds for the current model to get a single performance metric
 
             // Compare the current model's performance with the best model's performance and update if it's better
-            if (m == 0 || current_model_performance.is_better_than(best_model_performance)) {
+            if (m == 0 || current_performance.is_better_than(best_performance)) {
                 best_model_index = m;
-                best_model_performance = current_model_performance;
+                best_performance = current_performance;
             }
         }
 
@@ -141,15 +143,15 @@ void test(const Dataset& dataset, const Args& args) {
     }
 
     // Collect the .bin model files and sort them
-    std::vector<std::filesystem::path> model_files;
+    std::vector<std::filesystem::path> models;
     for (const auto& file : std::filesystem::directory_iterator(MODEL_PATH)) {
         if (file.path().extension() == ".bin") {
-            model_files.push_back(file.path());
+            models.push_back(file.path());
         }
     }
-    std::ranges::sort(model_files);
+    std::ranges::sort(models);
 
-    if (model_files.empty()) {
+    if (models.empty()) {
         throw std::runtime_error("No .bin model files found in " + MODEL_PATH + " (run with --train --dump first)");
     }
 
@@ -163,7 +165,7 @@ void test(const Dataset& dataset, const Args& args) {
     const Matrix test_labels = dataset.labels(Eigen::placeholders::all, split.test_indices);
 
     // Load the best models trained and evaluate them
-    for (const auto& file : model_files) {
+    for (const auto& file : models) {
         std::unique_ptr<Network> network = Serializer::load_model(file, dataset);
         if (network == nullptr) {
             std::println(stderr, "Failed to load the model, skipping");
@@ -176,10 +178,10 @@ void test(const Dataset& dataset, const Args& args) {
 
         // Calculate metrics for the split and print them
         const bool track_accuracy = (network->model.task == TaskType::CLASSIFICATION);
-        SplitResults results;
+        SplitResults results(network->model.task);
         results.train_metrics.append(train_labels, final_train_predictions, network->getLossFunction(), track_accuracy);
         results.test_metrics.append(test_labels, final_test_predictions, network->getLossFunction(), track_accuracy);
-        results.print(network->model.task);
+        results.print();
     }
 }
 

@@ -14,7 +14,7 @@ struct Args {
     Scalar dataset_ratio;
 
     // Cross-validation parameters
-    std::string model_file;
+    std::string grid_file;
     int inner_folds;
     int outer_folds;
     bool shuffle = false;
