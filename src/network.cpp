@@ -190,6 +190,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
 
     // Logging and metrics variables
     SplitResults split_results;
+    split_results.task = model.task;
     int logged_epoch = 0;
     const bool track_accuracy = (model.task == TaskType::CLASSIFICATION);
 

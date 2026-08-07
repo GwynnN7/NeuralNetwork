@@ -183,7 +183,16 @@ def update(frame):
         if has_inner:
             inner_df['fold_id'] = (inner_df['epoch'] == 0).cumsum()
             num_folds = inner_df['fold_id'].max()
-            plot_df = inner_df.groupby('epoch').mean().reset_index()
+
+            metric_cols = [c for c in ('train_loss', 'test_loss', 'train_acc', 'test_acc') if c in inner_df.columns]
+            if metric_cols:
+                averaged = {
+                    c: inner_df.pivot_table(index='epoch', columns='fold_id', values=c).ffill().mean(axis=1)
+                    for c in metric_cols
+                }
+                plot_df = pd.DataFrame(averaged).reset_index()
+            else:
+                plot_df = inner_df.groupby('epoch').mean().reset_index()
 
             if 'train_loss' in plot_df.columns:
                 ax1.plot(plot_df['epoch'], plot_df['train_loss'], linewidth=1.5, linestyle='--', color='purple', label='Training Loss')

@@ -5,7 +5,7 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 ## Features
 
 * **Dynamic Architecture**: Network structure and hyperparameters configurable via a `Grid Search` CSV file.
-* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout` to select the best model based on Loss.
+* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout`, selecting on error rate (Brier score as tie-break) for classification and on loss for regression.
 * **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
 * **Loss Functions**: `MSE` (Mean Squared Error), `BCE` (Binary Cross-Entropy) and `CCE` (Categorical Cross-Entropy).
 * **Architecture Features**:
@@ -86,6 +86,22 @@ activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 **`activation` + `loss` constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require `MSE`; `Softmax` is not valid as a hidden activation.
 
 **`output` + `loss` follows the label encoding.** `Softmax`+`CCE` models the outputs as one distribution and works for one-hot targets; `Sigmoid`+`BCE` treats them as independent, non mutually exclusive labels.
+
+### Effective values
+
+| Quantity | Effective value | Notes |
+| :--- | :--- | :--- |
+| SGD step | $\eta / (1-\alpha)$ | Effective step size increases with high $\alpha$ |
+| RMSProp step | $\eta / \sqrt{1-\alpha^{t}} \rightarrow \eta$ | No bias correction, so at low $t$ effective step is increased with high $\alpha$ |
+| Adam step | $\approx \eta$ | Bias correction cancels the $\beta_1$ amplification |
+| Decay per epoch | $(1-\eta\lambda)^{B} \approx 1 - \eta\lambda B$ | $B$ = batches per epoch, or 1 at `batch=0` |
+
+* **Momentum is not independent.** Changing `alpha` at fixed `eta` changes the step size. To isolate momentum, set `eta` $= s\,(1-\alpha)$ for a fixed target step $s$.
+* **`lambda` scales with `eta`**, since the decay is $\eta\lambda$ per update: changing the learning rate changes the regularization strength.
+
+### Model selection metric
+
+Selection never compares training losses: they are not on the same scale across loss functions. Classification is ranked on **error rate** (1 − accuracy, the task objective) with the **Brier score** as tie-break (continuous and confidence-aware). Regression ranks on loss, which is always `MSE` and so already comparable. Both components are fixed metrics computed on every model's predictions, independent of what it was trained with.
 
 
 ## CLI Options
