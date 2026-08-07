@@ -57,7 +57,7 @@ inline Scalar brier_score(const Matrix& target, const Matrix& prediction) {
 
 // Metrics for a single epoch
 struct EpochMetric {
-    Scalar loss = 0;
+    Scalar error = 0;
     Scalar accuracy = 0;
     Scalar brier = 0;
     // Weight of this epoch for averaging across folds/batches
@@ -71,7 +71,7 @@ struct MetricsResult {
 
     bool empty() const { return epochs.empty(); }
     size_t size() const { return epochs.size(); }
-    Scalar last_loss() const { return epochs.back().loss; }
+    Scalar last_error() const { return epochs.back().error; }
 
     void print(bool track_accuracy) const {
         if (empty()) {
@@ -84,10 +84,10 @@ struct MetricsResult {
         if (track_accuracy) {
             std::println(" • Accuracy:   {:.2f}%", mean(&EpochMetric::accuracy) * 100.0);
         }
-        std::println(" • Loss: {:.3f}", mean(&EpochMetric::loss));
+        std::println(" • Error: {:.3f}", mean(&EpochMetric::error));
     }
 
-    // Append metrics for a new epoch based on the provided target and prediction matrices, using the specified loss function
+    // Append metrics for a new epoch based on the provided target and prediction matrices, using the specified error function
     void append(const Matrix& target, const Matrix& prediction, const LossFunction& loss_func, bool track_accuracy = true) {
         epochs.push_back({loss_func(target, prediction),
                           track_accuracy ? Metrics::classification_accuracy(target, prediction) : Scalar(0),
@@ -98,16 +98,16 @@ struct MetricsResult {
     // Accumulate one `batch` into the current epoch, weighted by the sample count
     void add(const Matrix& target, const Matrix& prediction, const LossFunction& loss_func, bool track_accuracy = true) {
         const Scalar n = static_cast<Scalar>(target.cols());
-        const Scalar batch_loss = loss_func(target, prediction) * n;
+        const Scalar batch_error = loss_func(target, prediction) * n;
         const Scalar batch_accuracy = (track_accuracy ? Metrics::classification_accuracy(target, prediction) : Scalar(0)) * n;
         const Scalar batch_brier = (track_accuracy ? Metrics::brier_score(target, prediction) : Scalar(0)) * n;
 
         if (empty()) { // First batch of the epoch starts the accumulator
-            epochs.push_back({batch_loss, batch_accuracy, batch_brier, n});
+            epochs.push_back({batch_error, batch_accuracy, batch_brier, n});
             return;
         }
 
-        epochs.back().loss += batch_loss;
+        epochs.back().error += batch_error;
         epochs.back().accuracy += batch_accuracy;
         epochs.back().brier += batch_brier;
         epochs.back().weight += n;
@@ -143,7 +143,7 @@ struct MetricsResult {
         for (size_t i = 0; i < size(); ++i) {
             // Use the last value if 'other' fold stopped earlier than this, otherwise use the corresponding value
             const EpochMetric& source = (i < other.size()) ? other.epochs[i] : other.epochs.back();
-            epochs[i].loss += source.loss;
+            epochs[i].error += source.error;
             epochs[i].accuracy += source.accuracy;
             epochs[i].brier += source.brier;
             epochs[i].weight += 1;
@@ -168,7 +168,7 @@ struct MetricsResult {
     // Average the metrics of a single epoch using its accumulated weight
     static void average(EpochMetric& epoch) {
         if (epoch.weight != 0) {
-            epoch.loss /= epoch.weight;
+            epoch.error /= epoch.weight;
             epoch.accuracy /= epoch.weight;
             epoch.brier /= epoch.weight;
         }
@@ -176,7 +176,7 @@ struct MetricsResult {
     }
 };
 
-// Model-selection score, lower is better. The error rate (1 - accuracy) is the task objective, and the Brier score is used for tie breaking. MSE for regression
+// Model-selection score, lower is better. The error rate (1 - accuracy) is the task objective, and the Brier score is used for tie breaking. For regression the error is used
 struct SelectionScore {
     Scalar error_rate = std::numeric_limits<Scalar>::infinity();
     Scalar brier = std::numeric_limits<Scalar>::infinity();
@@ -222,7 +222,7 @@ struct SplitResults {
     bool track_accuracy() const { return task == TaskType::CLASSIFICATION; }
 
     // The score is the lowest, over all sliding windows, of the worst penalty within the window
-    // To avoid comparing different losses that are on different scales, the error rate is used for model selection. Regression uses MSE
+    // To avoid comparing different error functions that are on different scales, the error rate is used for model selection. Regression uses the error
     SelectionScore score() const {
         const auto& epochs = test_metrics.epochs;
         constexpr Scalar inf = std::numeric_limits<Scalar>::infinity();
@@ -232,13 +232,13 @@ struct SplitResults {
         if (epochs.empty() || test_metrics.invalid) {
             return invalid;
         }
-        // If any epoch has NaN or Inf loss, the model is invalid
-        if (std::ranges::any_of(epochs, [](const EpochMetric& e) { return !std::isfinite(e.loss); })) {
+        // If any epoch has NaN or Inf error, the model is invalid
+        if (std::ranges::any_of(epochs, [](const EpochMetric& e) { return !std::isfinite(e.error); })) {
             return invalid;
         }
 
         auto epoch_score = [this](const EpochMetric& e) {
-            return track_accuracy() ? SelectionScore{Scalar(1) - e.accuracy, e.brier} : SelectionScore{e.loss, e.loss};
+            return track_accuracy() ? SelectionScore{Scalar(1) - e.accuracy, e.brier} : SelectionScore{e.error, e.error};
         };
 
         // Determine the size of the sliding window, which is the minimum of SELECTION_WINDOW and the number of epochs

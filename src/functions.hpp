@@ -66,9 +66,10 @@ inline bool has_identity_derivative(ActivationType activation) {
 }
 } // namespace ActivationFunctions
 
+// Functions to compute loss and its derivative (error, without regularization)
 namespace LossFunctions {
 inline Scalar mse(const Matrix& target, const Matrix& prediction) {
-    // f = (1 / N) * sum((y* - y)^2)
+    // Mean over the patterns (p) of the sum over the output units (k): f = (1 / l) * sum_p(sum_k((y* - y)^2))
     return (prediction - target).array().square().colwise().sum().mean();
 }
 
@@ -79,7 +80,7 @@ inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
 
 inline Scalar bce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // f = -(1 / N) * sum(y * log(y*) + (1 - y) * log(1 - y*))
+    // f = -(1 / l) * sum(y * log(y*) + (1 - y) * log(1 - y*))
     return -(target.array() * pred_clipped.array().log() +
              (Scalar(1) - target.array()) * (Scalar(1) - pred_clipped.array()).log())
                 .sum() /
@@ -93,7 +94,7 @@ inline Matrix bce_derivative(const Matrix& target, const Matrix& prediction) {
 
 inline Scalar cce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // f = -(1 / N) * sum(y * log(y*))
+    // f = -(1 / l) * sum(y * log(y*))
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
 

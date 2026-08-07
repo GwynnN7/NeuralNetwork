@@ -36,7 +36,7 @@ for file in outer_files:
             'Sort Index': outer_idx,
             'Model ID': model_idx,
             'Test Acc': final_epoch.get('test_acc', 0.0),
-            'Test Loss': final_epoch.get('test_loss', 0.0)
+            'Test Error': final_epoch.get('test_error', 0.0)
         })
 
 if not results:

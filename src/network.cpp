@@ -144,7 +144,8 @@ Matrix Network::forward(const Matrix& input) {
     return out;
 }
 
-// Training backward pass, propagates the gradient from the loss to the first layer
+// Training backward pass, propagates the gradient from the error to the first layer.
+// delta_k = (d_k - o_k) f'(net_k) for an output unit and delta_j = (sum_k(delta_k w_kj)) f'(net_j) for a hidden unit
 void Network::backward(const Matrix& output_gradient) {
     Matrix gradient = output_gradient;
     for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
@@ -187,7 +188,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
                 throw std::runtime_error("Failed to open log file: " + log_filename);
             }
             if (is_first_run) {
-                log_file << "epoch,train_loss,test_loss,train_acc,test_acc\n";
+                log_file << "epoch,train_error,test_error,train_acc,test_acc\n";
             }
         }
         // Sync the logged epoch with the available metrics
@@ -197,8 +198,8 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
             const EpochMetric& train = split_results.train_metrics.epochs[logged_epoch];
             const EpochMetric& test = split_results.test_metrics.epochs[logged_epoch];
             log_file << logged_epoch << ","
-                     << train.loss << ","
-                     << test.loss << ","
+                     << train.error << ","
+                     << test.error << ","
                      << train.accuracy * 100.0 << ","
                      << test.accuracy * 100.0 << "\n";
             logged_epoch++;
@@ -213,7 +214,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
 
     // Early Stopping variables
-    Scalar patience_loss = 0.0;
+    Scalar patience_error = 0.0;
     int epochs_without_improvement = 0;
     bool auto_early_stop_flag = false;
 
@@ -260,8 +261,8 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         split_results.train_metrics.append(batch_metrics);
         split_results.train_metrics.average_last();
 
-        // Check for NaN or Inf in the latest training loss to stop training
-        if (!std::isfinite(split_results.train_metrics.last_loss())) {
+        // Check for NaN or Inf in the latest training error to stop training
+        if (!std::isfinite(split_results.train_metrics.last_error())) {
             split_results.train_metrics.invalid = true;
             split_results.test_metrics.invalid = true;
             std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
@@ -276,12 +277,14 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         }
 
         // Early stopping logic based on the patience parameter
+        // In model selection the holdout split is the validation set, so it is used to determine when to stop
+        // Outside model selection, the training error is used because the holdout split is the test set
         if (ctx.patience > 0) {
-            Scalar current_loss = ctx.in_model_selection ? split_results.test_metrics.last_loss() : split_results.train_metrics.last_loss();
-            // If the current loss is better than the best loss so far (with tolerance), reset the patience counter and save the model parameters
-            if (i == 0 || current_loss < patience_loss - std::abs(patience_loss) * ES_TOLERANCE) {
+            Scalar current_error = ctx.in_model_selection ? split_results.test_metrics.last_error() : split_results.train_metrics.last_error();
+            // If the current error is better than the best error so far (with tolerance), reset the patience counter and save the model parameters
+            if (i == 0 || current_error < patience_error - std::abs(patience_error) * ES_TOLERANCE) {
                 epochs_without_improvement = 0;
-                patience_loss = current_loss;
+                patience_error = current_error;
                 snapshotParameters(); // Save the current parameters as the best epoch
             } else {
                 epochs_without_improvement++;

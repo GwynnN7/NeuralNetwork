@@ -17,9 +17,9 @@ app_state = {
     'curr_outer_idx': 0,
     'curr_model_idx': 0,
     'buttons': [],
-    'ax_loss': None,
+    'ax_error': None,
     'ax_acc': None,
-    'log_loss': False,
+    'log_error': False,
     'initialized': False
 }
 
@@ -67,7 +67,7 @@ def goto_best(event):
             update(0)
 
 def toggle_log(event):
-    app_state['log_loss'] = not app_state['log_loss']
+    app_state['log_error'] = not app_state['log_error']
     update(0)
 
 def init_ui():
@@ -75,8 +75,8 @@ def init_ui():
 
     gs = fig.add_gridspec(1, 2, left=0.055, right=0.99, bottom=0.16, top=0.91, wspace=0.14)
 
-    app_state['ax_loss'] = fig.add_subplot(gs[0, 0])
-    app_state['ax_acc'] = fig.add_subplot(gs[0, 1], sharex=app_state['ax_loss'])
+    app_state['ax_error'] = fig.add_subplot(gs[0, 0])
+    app_state['ax_acc'] = fig.add_subplot(gs[0, 1], sharex=app_state['ax_error'])
 
     ax_prev_f = plt.axes([0.15, 0.04, 0.1, 0.05])
     ax_next_f = plt.axes([0.26, 0.04, 0.1, 0.05])
@@ -96,7 +96,7 @@ def init_ui():
     btn_prev_m = Button(ax_prev_m, '< Prev Model')
     btn_next_m = Button(ax_next_m, 'Next Model >')
 
-    btn_log = Button(ax_log, 'Log Loss')
+    btn_log = Button(ax_log, 'Log Error')
 
     btn_prev_f.on_clicked(prev_fold)
     btn_next_f.on_clicked(next_fold)
@@ -156,7 +156,7 @@ def update(frame):
 
         if len(app_state['buttons']) == 6:
             btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m, btn_log = app_state['buttons']
-            btn_log.label.set_text('Linear Loss' if app_state['log_loss'] else 'Log Loss')
+            btn_log.label.set_text('Linear Error' if app_state['log_error'] else 'Log Error')
 
             def toggle_btn(btn, condition):
                 btn.set_active(condition)
@@ -186,7 +186,7 @@ def update(frame):
         plot_title = model_name # Overwritten below once we know whether this is an inner or outer run
         num_folds = 0
 
-        ax1 = app_state['ax_loss']
+        ax1 = app_state['ax_error']
         ax2 = app_state['ax_acc']
 
         ax1.clear()
@@ -196,7 +196,7 @@ def update(frame):
             inner_df['fold_id'] = (inner_df['epoch'] == 0).cumsum()
             num_folds = inner_df['fold_id'].max()
 
-            metric_cols = [c for c in ('train_loss', 'test_loss', 'train_acc', 'test_acc') if c in inner_df.columns]
+            metric_cols = [c for c in ('train_error', 'test_error', 'train_acc', 'test_acc') if c in inner_df.columns]
             if metric_cols:
                 averaged = {
                     c: inner_df.pivot_table(index='epoch', columns='fold_id', values=c).ffill().mean(axis=1)
@@ -206,14 +206,14 @@ def update(frame):
             else:
                 plot_df = inner_df.groupby('epoch').mean().reset_index()
 
-            if 'train_loss' in plot_df.columns:
-                ax1.plot(plot_df['epoch'], plot_df['train_loss'], linewidth=1.5, linestyle='--', color='purple', label='Training Loss')
-                ax1.plot(plot_df['epoch'], plot_df['test_loss'], linewidth=1.5, color='orange', label='Validation Loss')
+            if 'train_error' in plot_df.columns:
+                ax1.plot(plot_df['epoch'], plot_df['train_error'], linewidth=1.5, linestyle='--', color='purple', label='Training Error')
+                ax1.plot(plot_df['epoch'], plot_df['test_error'], linewidth=1.5, color='orange', label='Validation Error')
 
-                if not plot_df['test_loss'].isnull().all() and not has_outer:
-                    best_idx = plot_df['test_loss'].idxmin()
+                if not plot_df['test_error'].isnull().all() and not has_outer:
+                    best_idx = plot_df['test_error'].idxmin()
                     best_ep = plot_df.loc[best_idx, 'epoch']
-                    best_val = plot_df.loc[best_idx, 'test_loss']
+                    best_val = plot_df.loc[best_idx, 'test_error']
                     ax1.axvline(x=best_ep, color='orange', linestyle=':', alpha=0.6)
                     ax1.scatter(best_ep, best_val, color='orange', zorder=5)
                     ax1.annotate(f"{best_val:.3f}", (best_ep, best_val), textcoords="offset points", xytext=(5,5), color='orange', fontweight='bold')
@@ -233,15 +233,15 @@ def update(frame):
             plot_title = f"Grid Search ({num_folds} Folds):  {model_name}"
 
         if has_outer:
-            if 'train_loss' in outer_df.columns:
+            if 'train_error' in outer_df.columns:
                 if not has_inner: 
-                    ax1.plot(outer_df['epoch'], outer_df['train_loss'], color='purple', linestyle='--', linewidth=1.5, label='Train Loss')
-                ax1.plot(outer_df['epoch'], outer_df['test_loss'], color='blue', linewidth=1.5, label='Test Loss')
+                    ax1.plot(outer_df['epoch'], outer_df['train_error'], color='purple', linestyle='--', linewidth=1.5, label='Train Error')
+                ax1.plot(outer_df['epoch'], outer_df['test_error'], color='blue', linewidth=1.5, label='Test Error')
 
-                if not outer_df['test_loss'].isnull().all():
-                    best_idx = outer_df['test_loss'].idxmin()
+                if not outer_df['test_error'].isnull().all():
+                    best_idx = outer_df['test_error'].idxmin()
                     best_ep = outer_df.loc[best_idx, 'epoch']
-                    best_val = outer_df.loc[best_idx, 'test_loss']
+                    best_val = outer_df.loc[best_idx, 'test_error']
                     ax1.axvline(x=best_ep, color='blue', linestyle=':', alpha=0.6)
                     ax1.scatter(best_ep, best_val, color='blue', zorder=5)
                     ax1.annotate(f"{best_val:.3f}", (best_ep, best_val), textcoords="offset points", xytext=(5,5), color='blue', fontweight='bold')
@@ -263,15 +263,15 @@ def update(frame):
 
         fig.suptitle(plot_title, fontsize=13, fontweight='bold')
 
-        ax1.set_title("Loss (log scale)" if app_state['log_loss'] else "Loss", fontsize=11)
-        if app_state['log_loss']:
+        ax1.set_title("Error (log scale)" if app_state['log_error'] else "Error", fontsize=11)
+        if app_state['log_error']:
             ax1.set_yscale('log', nonpositive='mask')
             ax1.autoscale(axis='y')
         else:
             ax1.set_yscale('linear')
             ax1.set_ylim(bottom=0)
         ax1.grid(True, which='both', linestyle='--', alpha=0.7)
-        ax1.set_ylabel("Loss")
+        ax1.set_ylabel("Error")
         ax1.set_xlabel("Epoch")
 
         ax2.set_title("Accuracy", fontsize=11)

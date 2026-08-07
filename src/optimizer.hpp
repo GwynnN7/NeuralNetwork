@@ -7,10 +7,10 @@
 
 class Optimizer {
   protected:
-    // Apply the update each subclass already computed and weight decay regularization.
+    // Apply the update each subclass already computed and add weight decay regularization directly to the weights
     void optimize(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) {
         if (model.lambda > 0) {
-            W *= (Scalar(1) - model.eta * model.lambda);
+            W *= (Scalar(1) - model.lambda);
         }
         W += dW;
         b += db;
