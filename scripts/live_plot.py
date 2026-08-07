@@ -8,7 +8,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button
 
 folder_path = f"artifacts/{sys.argv[1]}" if len(sys.argv) > 1 else "artifacts/model"
-fig = plt.figure(figsize=(12, 9))
+fig = plt.figure(figsize=(16, 7))
 
 app_state = {
     'outer_ids': [],
@@ -19,6 +19,7 @@ app_state = {
     'buttons': [],
     'ax_loss': None,
     'ax_acc': None,
+    'log_loss': False,
     'initialized': False
 }
 
@@ -65,13 +66,17 @@ def goto_best(event):
             app_state['curr_model_idx'] = models.index(best_m_id)
             update(0)
 
+def toggle_log(event):
+    app_state['log_loss'] = not app_state['log_loss']
+    update(0)
+
 def init_ui():
     app_state['initialized'] = True
 
-    gs = fig.add_gridspec(2, 1, bottom=0.15, top=0.93, hspace=0.15) 
+    gs = fig.add_gridspec(1, 2, left=0.055, right=0.99, bottom=0.16, top=0.91, wspace=0.14)
 
-    app_state['ax_acc'] = fig.add_subplot(gs[1, 0])
-    app_state['ax_loss'] = fig.add_subplot(gs[0, 0], sharex=app_state['ax_acc'])
+    app_state['ax_loss'] = fig.add_subplot(gs[0, 0])
+    app_state['ax_acc'] = fig.add_subplot(gs[0, 1], sharex=app_state['ax_loss'])
 
     ax_prev_f = plt.axes([0.15, 0.04, 0.1, 0.05])
     ax_next_f = plt.axes([0.26, 0.04, 0.1, 0.05])
@@ -81,6 +86,8 @@ def init_ui():
     ax_prev_m = plt.axes([0.64, 0.04, 0.1, 0.05])
     ax_next_m = plt.axes([0.75, 0.04, 0.1, 0.05])
 
+    ax_log    = plt.axes([0.885, 0.04, 0.09, 0.05])
+
     btn_prev_f = Button(ax_prev_f, '< Prev Fold')
     btn_next_f = Button(ax_next_f, 'Next Fold >')
 
@@ -89,13 +96,16 @@ def init_ui():
     btn_prev_m = Button(ax_prev_m, '< Prev Model')
     btn_next_m = Button(ax_next_m, 'Next Model >')
 
+    btn_log = Button(ax_log, 'Log Loss')
+
     btn_prev_f.on_clicked(prev_fold)
     btn_next_f.on_clicked(next_fold)
     btn_best.on_clicked(goto_best)
     btn_prev_m.on_clicked(prev_model)
     btn_next_m.on_clicked(next_model)
+    btn_log.on_clicked(toggle_log)
 
-    app_state['buttons'].extend([btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m])
+    app_state['buttons'].extend([btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m, btn_log])
 
 def update(frame):
     try:
@@ -144,8 +154,9 @@ def update(frame):
 
         m_id = models[app_state['curr_model_idx']]
 
-        if len(app_state['buttons']) == 5:
-            btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m = app_state['buttons']
+        if len(app_state['buttons']) == 6:
+            btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m, btn_log = app_state['buttons']
+            btn_log.label.set_text('Linear Loss' if app_state['log_loss'] else 'Log Loss')
 
             def toggle_btn(btn, condition):
                 btn.set_active(condition)
@@ -172,6 +183,7 @@ def update(frame):
         has_outer = not outer_df.empty
 
         model_name = f"Outer Fold: {o_id + 1}/{len(app_state['outer_ids'])}  |  Model: {m_id}"
+        plot_title = model_name # Overwritten below once we know whether this is an inner or outer run
         num_folds = 0
 
         ax1 = app_state['ax_loss']
@@ -218,7 +230,7 @@ def update(frame):
                     ax2.scatter(best_ep, best_val, color='orange', zorder=5)
                     ax2.annotate(f"{best_val:.1f}%", (best_ep, best_val), textcoords="offset points", xytext=(5,-12), color='orange', fontweight='bold')
 
-            ax1.set_title(f"Grid Search ({num_folds} Folds):  {model_name}")
+            plot_title = f"Grid Search ({num_folds} Folds):  {model_name}"
 
         if has_outer:
             if 'train_loss' in outer_df.columns:
@@ -247,16 +259,26 @@ def update(frame):
                     ax2.scatter(best_ep, best_val, color='blue', zorder=5)
                     ax2.annotate(f"{best_val:.1f}%", (best_ep, best_val), textcoords="offset points", xytext=(5,-12), color='blue', fontweight='bold')
 
-            ax1.set_title(f" Best Model Evaluation:  {model_name}")
+            plot_title = f"Best Model Evaluation:  {model_name}"
 
-        ax1.set_ylim(bottom=-0.05)
-        ax1.grid(True, linestyle='--', alpha=0.7)
+        fig.suptitle(plot_title, fontsize=13, fontweight='bold')
+
+        ax1.set_title("Loss (log scale)" if app_state['log_loss'] else "Loss", fontsize=11)
+        if app_state['log_loss']:
+            ax1.set_yscale('log', nonpositive='mask')
+            ax1.autoscale(axis='y')
+        else:
+            ax1.set_yscale('linear')
+            ax1.set_ylim(bottom=0)
+        ax1.grid(True, which='both', linestyle='--', alpha=0.7)
         ax1.set_ylabel("Loss")
+        ax1.set_xlabel("Epoch")
 
-        ax2.set_ylim(-5, 105)
-        ax2.set_xlabel("Epoch")
+        ax2.set_title("Accuracy", fontsize=11)
+        ax2.set_ylim(top=101)
         ax2.grid(True, linestyle='--', alpha=0.7)
-        ax2.set_ylabel("Accuracy")
+        ax2.set_ylabel("Accuracy (%)")
+        ax2.set_xlabel("Epoch")
 
         handles1, _ = ax1.get_legend_handles_labels()
         if handles1: ax1.legend(loc="upper right")
