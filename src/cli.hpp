@@ -3,21 +3,25 @@
 #include "types.hpp"
 
 struct Args {
-    DatasetType dataset_type;
-    std::string name;
-
+    // Epochs parameters
     int epochs;
-    int patience;
+    Scalar patience;
+    Scalar warmup;
+
+    // Dataset parameters
+    DatasetType dataset_type;
     Scalar train_ratio;
     Scalar dataset_ratio;
 
+    // Cross-validation parameters
     std::string model_file;
-
-    int seed;
     int inner_folds;
     int outer_folds;
     bool shuffle = false;
 
+    // Configuration parameters
+    std::string name;
+    int seed;
     bool dump = false;
     bool train = false;
 

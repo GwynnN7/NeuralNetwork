@@ -16,7 +16,8 @@ Args Args::parse(int argc, char* argv[]) {
     app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1)->check(CLI::NonNegativeNumber);
 
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800)->check(CLI::PositiveNumber);
-    app.add_option("--patience", args.patience, "Patience for early stopping (0 = disabled)")->default_val(60)->check(CLI::NonNegativeNumber);
+    app.add_option("--patience", args.patience, "Patience for early stopping, as a fraction of epochs (0 = disabled)")->default_val(0.125)->check(CLI::Range(0.0, 0.5));
+    app.add_option("--warmup", args.warmup, "Learning rate warmup, as a fraction of epochs (0 = disabled)")->default_val(0.1)->check(CLI::Range(0.0, 0.5));
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
     app.add_flag("--dump", args.dump, "Dump best models' weights to file after total retraining")->default_val(false);
     app.add_flag("--train", args.train, "Train a new model")->default_val(false);

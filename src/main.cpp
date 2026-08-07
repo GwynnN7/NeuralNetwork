@@ -65,6 +65,7 @@ void train(const Dataset& dataset, const Args& args) {
                 const TrainContext ctx{
                     .epochs = args.epochs,
                     .patience = args.patience,
+                    .warmup = args.warmup,
                     .model_id = grid_model.id,
                     .outer_index = outer_index,
                     .inner_index = static_cast<int>(j),
@@ -97,6 +98,7 @@ void train(const Dataset& dataset, const Args& args) {
         const TrainContext ctx{
             .epochs = args.epochs,
             .patience = args.patience,
+            .warmup = args.warmup,
             .model_id = best_models[i].id,
             .outer_index = outer_index,
             .inner_index = -1,
@@ -120,6 +122,7 @@ void train(const Dataset& dataset, const Args& args) {
             const TrainContext ctx{
                 .epochs = args.epochs,
                 .patience = args.patience,
+                .warmup = args.warmup,
                 .model_id = best_models[i].id,
                 .outer_index = static_cast<int>(i),
                 .inner_index = -1,

@@ -183,11 +183,6 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;
     const int num_batches = (input_size + current_batch_size - 1) / current_batch_size;
 
-    // Early Stopping variables
-    Scalar patience_loss = 0.0;
-    int epochs_without_improvement = 0;
-    bool auto_early_stop_flag = false;
-
     // Logging and metrics variables
     SplitResults split_results;
     split_results.task = model.task;
@@ -215,12 +210,18 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         log_file.flush();
     };
 
-    // Linear learning rate decay parameters
+    // Learning rate variables for warmup and decay
+    const int warmup_epochs = std::clamp(static_cast<int>(ctx.epochs * ctx.warmup), 0, std::max(0, ctx.epochs - 1)); // Number of epochs for the warmup
     const Scalar initial_eta = model.eta;
-    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
-    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs) * TAU_MULTIPLIER);
+    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;                                            // Target learning rate after decay
+    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
 
-    // Reusable batch index buffer and local copy of the training indices to shuffle each epoch
+    // Early Stopping variables
+    Scalar patience_loss = 0.0;
+    int epochs_without_improvement = 0;
+    bool auto_early_stop_flag = false;
+
+    // Batch index buffer and local copy of the training indices to shuffle each epoch
     std::vector<int> batch_indices;
     batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
@@ -229,11 +230,18 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         // Shuffle the training data indices for current epoch
         std::ranges::shuffle(epoch_indices, get_random_generator());
 
-        // Update the learning rate based on the current epoch using linear decay
-        const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i) / tau);
-        model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
+        // Update the learning rate
+        if (i < warmup_epochs) {
+            // Warmup: linearly increase the learning rate from initial_eta/warmup_epochs to initial_eta
+            model.eta = initial_eta * (static_cast<Scalar>(i + 1) / static_cast<Scalar>(warmup_epochs));
+        } else {
+            // Decay: linearly decrease the learning rate from initial_eta to target_eta
+            const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i - warmup_epochs) / tau);
+            model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
+        }
 
         MetricsResult batch_metrics;
+        // Loop through each batch in the current epoch
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
             // Determine the starting index and size for the current batch
             const int index_start = j * current_batch_size;
@@ -283,7 +291,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
                 epochs_without_improvement++;
             }
 
-            if (epochs_without_improvement >= ctx.patience) {
+            if (epochs_without_improvement >= static_cast<int>(ctx.patience * ctx.epochs)) {
                 auto_early_stop_flag = true;
             }
         }

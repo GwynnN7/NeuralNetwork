@@ -116,7 +116,8 @@ Selection never compares training losses: they are not on the same scale across 
 | `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
 | `--epochs` | Maximum number of training epochs per fold | `800` |
-| `--patience` | Number of epochs to wait before checking for early stopping | `60` |
+| `--patience` | Fraction of epochs to wait for improvement before early stopping | `0.125` |
+| `--warmup` | Fraction of epochs to warmup the learning rate | `0.1` |
 | `--train_ratio`| Training set split ratio, exclusive bounds (when $K=1$) | `0.85` |
 | `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
 | `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |

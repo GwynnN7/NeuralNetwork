@@ -12,7 +12,8 @@
 // Context for a training run
 struct TrainContext {
     int epochs = 0;
-    int patience = 0;
+    Scalar patience = 0.0; // Patience for early stopping
+    Scalar warmup = 0.0;   // Warmup ratio for learning rate
 
     int model_id = 0;    // Grid-search id of the model being trained
     int outer_index = 0; // Outer cross-validation fold
