@@ -8,9 +8,11 @@
 class Optimizer {
   protected:
     // Apply the update each subclass already computed and add weight decay regularization directly to the weights
-    void optimize(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) {
+    void optimize(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) {
+        // Scale the regularization term by the batch size
+        const Scalar effective_lambda = model.lambda * batch_fraction;
         if (model.lambda > 0) {
-            W *= (Scalar(1) - model.lambda);
+            W *= (Scalar(1) - effective_lambda);
         }
         W += dW;
         b += db;
@@ -18,7 +20,7 @@ class Optimizer {
 
   public:
     virtual ~Optimizer() = default;
-    virtual void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) = 0;
+    virtual void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) = 0;
 };
 
 class GradientDescent : public Optimizer {
@@ -33,12 +35,12 @@ class GradientDescent : public Optimizer {
         d_b = Vector::Zero(rows);
     }
 
-    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) override {
+    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) override {
         // Calculate the weight and bias updates using momentum and learning rate
         d_W = -model.eta * dW + model.alpha * d_W;
         d_b = -model.eta * db + model.alpha * d_b;
 
-        optimize(W, b, d_W, d_b, model);
+        optimize(W, b, d_W, d_b, model, batch_fraction);
     }
 };
 
@@ -57,7 +59,7 @@ class RMSProp : public Optimizer {
         v_b = d_b = Vector::Zero(rows);
     }
 
-    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) override {
+    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) override {
         // Update the moving average of squared gradients for weights and biases
         v_W = (model.alpha * v_W) + (Scalar(1) - model.alpha) * dW.cwiseAbs2();
         v_b = (model.alpha * v_b) + (Scalar(1) - model.alpha) * db.cwiseAbs2();
@@ -66,7 +68,7 @@ class RMSProp : public Optimizer {
         d_W = -model.eta * dW.array() / (v_W.array().sqrt() + EPSILON);
         d_b = -model.eta * db.array() / (v_b.array().sqrt() + EPSILON);
 
-        optimize(W, b, d_W, d_b, model);
+        optimize(W, b, d_W, d_b, model, batch_fraction);
     }
 };
 
@@ -90,7 +92,7 @@ class Adam : public Optimizer {
     }
 
     // Calculate the weight and bias updates using Adam algorithm (combination of momentum and RMSProp)
-    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model) override {
+    void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) override {
         const Scalar B1 = model.beta1;
 
         // Update the moving average of gradients for weights and biases
@@ -110,6 +112,6 @@ class Adam : public Optimizer {
         d_W = -model.eta * (m_W.array() / m_corr) / ((v_W.array() / v_corr).sqrt() + EPSILON);
         d_b = -model.eta * (m_b.array() / m_corr) / ((v_b.array() / v_corr).sqrt() + EPSILON);
 
-        optimize(W, b, d_W, d_b, model);
+        optimize(W, b, d_W, d_b, model, batch_fraction);
     }
 };
