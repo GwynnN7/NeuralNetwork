@@ -14,19 +14,32 @@ inline std::string MODEL_PATH;
 
 // Flag and signal handler to handle cli early stopping.
 inline volatile std::sig_atomic_t early_stop_flag = 0;
-inline void handle_signal([[maybe_unused]] int sig) {
+inline void handle_signal(int) {
     early_stop_flag = early_stop_flag ? 0 : 1;
 }
 
+// Shared generator for building outer/inner folds
+inline std::mt19937& get_split_generator() {
+    static std::mt19937 split_generator(std::random_device{}());
+    return split_generator;
+}
+
 // Shared generator for weight initialization and shuffling
-inline std::mt19937& get_random_generator() {
-    static std::mt19937 gen(std::random_device{}());
-    return gen;
+inline std::mt19937& get_trial_generator() {
+    static std::mt19937 trial_generator(std::random_device{}());
+    return trial_generator;
+}
+
+// Set the random seed for reproducibility, mixing trial and fold indices for per-run reproducibility
+inline void set_trial_seed(unsigned int seed, int trial, int fold) {
+    // Mix the seed with trial and fold indices for per-run reproducibility
+    std::seed_seq seq{seed, static_cast<unsigned int>(trial), static_cast<unsigned int>(fold)};
+    get_trial_generator().seed(seq);
 }
 
 // Set the random seed for reproducibility
-inline void set_random_seed(unsigned int seed) {
-    get_random_generator().seed(seed);
+inline void set_split_seed(unsigned int seed) {
+    get_split_generator().seed(seed);
 }
 
 // Trim leading and trailing whitespace from a string
