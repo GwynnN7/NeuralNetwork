@@ -21,6 +21,7 @@ Args Args::parse(int argc, char* argv[]) {
 
     // Cross-validation parameters
     app.add_option("--grid", args.grid_file, "File containing model parameters for grid search")->default_val("grids/grid.csv");
+    app.add_option("--trials", args.trials, "Random restarts per training run")->default_val(1)->check(CLI::PositiveNumber);
     app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1)->check(CLI::NonNegativeNumber);
     app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1)->check(CLI::NonNegativeNumber);
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
@@ -35,7 +36,7 @@ Args Args::parse(int argc, char* argv[]) {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
         std::println(stderr, "Error parsing arguments: {}", e.what());
-        throw std::invalid_argument("Invalid command line arguments.");
+        throw std::invalid_argument("Invalid command line arguments");
     }
 
     return args;

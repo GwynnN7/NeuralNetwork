@@ -15,6 +15,7 @@ struct Args {
 
     // Cross-validation parameters
     std::string grid_file;
+    int trials;
     int inner_folds;
     int outer_folds;
     bool shuffle = false;
