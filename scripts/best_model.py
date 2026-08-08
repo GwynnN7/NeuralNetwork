@@ -1,88 +1,57 @@
-import pandas as pd
-import sys
-import os
 import glob
+import os
 import re
+import sys
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
-model_name = sys.argv[1] if len(sys.argv) > 1 else "model"
-folder_path = f"artifacts/{model_name}"
-files = glob.glob(os.path.join(folder_path, "outer*_m*.csv"))
+NAME = sys.argv[1] if len(sys.argv) > 1 else "model"
+FOLDER = f"artifacts/{NAME}"
+OUTER = re.compile(r"^outer(\d+)_m(\d+)\.csv$")
 
-outer_files = [
-    f for f in files 
-    if re.match(r'^outer(\d+)_m(\d+)\.csv$', os.path.basename(f))
-]
 
-if not outer_files:
-    print(f"No outer fold files found in {folder_path}")
-    sys.exit()
+def summarize(path):
+    df = pd.read_csv(path)
+    picks = [run.loc[run["train_error"].idxmin()] for _, run in df.groupby("trial")]
+    acc = pd.Series([p["test_acc"] for p in picks])
+    return acc.mean(), acc.std(ddof=1) if len(acc) > 1 else 0.0, len(acc)
 
-results = []
 
-for file in outer_files:
-    basename = os.path.basename(file)
+rows = []
+for path in sorted(glob.glob(os.path.join(FOLDER, "outer*_m*.csv"))):
+    match = OUTER.match(os.path.basename(path))
+    if not match:
+        continue
+    mean, sd, trials = summarize(path)
+    rows.append({"fold": int(match.group(1)), "model": int(match.group(2)),
+                 "acc": mean, "sd": sd, "trials": trials})
 
-    match = re.search(r'^outer(\d+)_m(\d+)\.csv$', basename)
+if not rows:
+    sys.exit(f"No retrained model logs found in {FOLDER}")
 
-    outer_idx = int(match.group(1))
-    model_idx = int(match.group(2))
-
-    df = pd.read_csv(file)
-    if not df.empty:
-        final_epoch = df.iloc[-1]
-        results.append({
-            'Outer Fold': f"Fold {outer_idx}",
-            'Sort Index': outer_idx,
-            'Model ID': model_idx,
-            'Test Acc': final_epoch.get('test_acc', 0.0),
-            'Test Error': final_epoch.get('test_error', 0.0)
-        })
-
-if not results:
-    print(f"Files could not be parsed correctly")
-    sys.exit()
-
-results_df = pd.DataFrame(results).sort_values('Sort Index')
+results = pd.DataFrame(rows).sort_values("fold")
+labels = [f"Fold {f}" for f in results["fold"]]
 
 plt.figure(figsize=(10, 6))
-bars = plt.bar(
-    results_df['Outer Fold'], 
-    results_df['Test Acc'], 
-    color='#4C72B0', 
-    edgecolor='black', 
-    linewidth=1.2,
-    alpha=0.85
-)
+bars = plt.bar(labels, results["acc"], yerr=results["sd"], capsize=6,
+               color="#4C72B0", edgecolor="black", linewidth=1.2, alpha=0.85)
 
-for bar, model_id, acc in zip(bars, results_df['Model ID'], results_df['Test Acc']):
-    yval = bar.get_height()
-    plt.text(
-        bar.get_x() + bar.get_width() / 2, 
-        yval + 2, 
-        f"Model {model_id}\n({acc:.1f}%)", 
-        ha='center', 
-        va='bottom', 
-        fontweight='bold',
-        fontsize=10
-    )
+for bar, model, acc, sd in zip(bars, results["model"], results["acc"], results["sd"]):
+    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + sd + 2,
+             f"Model {model}\n{acc:.1f}% ± {sd:.1f}", ha="center", va="bottom",
+             fontweight="bold", fontsize=10)
 
-grand_average = results_df['Test Acc'].mean()
-plt.axhline(
-    grand_average, 
-    color='#C44E52', 
-    linestyle='--', 
-    linewidth=2.5, 
-    label=f'Average: {grand_average:.2f}%'
-)
+average = results["acc"].mean()
+plt.axhline(average, color="#C44E52", linestyle="--", linewidth=2.5,
+            label=f"Average: {average:.2f}%")
 
 plt.ylim(0, 115)
 plt.ylabel("Test Accuracy (%)", fontsize=12)
-plt.title(f"{model_name.upper()} Performance", fontsize=14, fontweight='bold')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-if len(results_df) > 1:
-    plt.legend(loc='upper right', fontsize=11)
-
+plt.title(f"{NAME.upper()} Performance  ({results['trials'].max()} trials per fold)",
+          fontsize=14, fontweight="bold")
+plt.grid(axis="y", linestyle="--", alpha=0.7)
+if len(results) > 1:
+    plt.legend(loc="upper right", fontsize=11)
 plt.tight_layout()
 plt.show()

@@ -1,294 +1,191 @@
-import re
-import pandas as pd
-import sys
-import os
 import glob
+import os
+import re
+import sys
+
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button
 
-folder_path = f"artifacts/{sys.argv[1]}" if len(sys.argv) > 1 else "artifacts/model"
-fig = plt.figure(figsize=(16, 7))
+FOLDER = f"artifacts/{sys.argv[1] if len(sys.argv) > 1 else 'model'}"
+INNER = re.compile(r"^outer(\d+)_inner_m(\d+)\.csv$")
+OUTER = re.compile(r"^outer(\d+)_m(\d+)\.csv$")
+METRICS = ["train_error", "test_error", "train_mse", "test_mse", "train_acc", "test_acc"]
 
-app_state = {
-    'outer_ids': [],
-    'models_per_outer': {},
-    'best_model_per_outer': {},
-    'curr_outer_idx': 0,
-    'curr_model_idx': 0,
-    'buttons': [],
-    'ax_error': None,
-    'ax_acc': None,
-    'log_error': False,
-    'initialized': False
-}
+TRAIN_COLOR = "purple"
+VALID_COLOR = "orange"
+TEST_COLOR = "blue"
 
-def load_csv(path):
-    if os.path.exists(path) and os.path.getsize(path) > 0:
-        try:
-            return pd.read_csv(path)
-        except pd.errors.EmptyDataError:
-            pass
-    return pd.DataFrame()
 
-def prev_fold(event):
-    if app_state['curr_outer_idx'] > 0:
-        app_state['curr_outer_idx'] -= 1
-        app_state['curr_model_idx'] = 0 
-        update(0)
+def load(path):
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return None
+    df = pd.read_csv(path)
+    return df if not df.empty else None
 
-def next_fold(event):
-    if app_state['curr_outer_idx'] < len(app_state['outer_ids']) - 1:
-        app_state['curr_outer_idx'] += 1
-        app_state['curr_model_idx'] = 0
-        update(0)
 
-def prev_model(event):
-    if app_state['curr_model_idx'] > 0:
-        app_state['curr_model_idx'] -= 1
-        update(0)
+class Runs:
+    def __init__(self, df, retrain):
+        pivots = {c: df.pivot_table(index="epoch", columns=["fold", "trial"], values=c) for c in METRICS}
+        live = next(iter(pivots.values())).notna().sum(axis=1)
+        self.count = int(live.max())
+        self.mean = pd.DataFrame({c: p.ffill().mean(axis=1) for c, p in pivots.items()}).reset_index()
+        self.sd = pd.DataFrame({c: p.std(axis=1, ddof=1) for c, p in pivots.items()}).reset_index()
+        self.complete = (live == self.count).to_numpy()
+        if retrain and self.complete.any():
+            self.mean = self.mean[self.complete]
+            self.sd = self.sd[self.complete]
+            self.complete = self.complete[self.complete]
+        self.folds = df["fold"].nunique()
+        self.trials = df["trial"].nunique()
+        self.best = self.mean["train_error" if retrain else "test_error"].idxmin()
 
-def next_model(event):
-    if not app_state['outer_ids']: return
-    o_id = app_state['outer_ids'][app_state['curr_outer_idx']]
-    if app_state['curr_model_idx'] < len(app_state['models_per_outer'][o_id]) - 1:
-        app_state['curr_model_idx'] += 1
-        update(0)
-
-def goto_best(event):
-    if not app_state['outer_ids']: return
-    o_id = app_state['outer_ids'][app_state['curr_outer_idx']]
-    best_m_id = app_state['best_model_per_outer'].get(o_id)
-
-    if best_m_id is not None:
-        models = app_state['models_per_outer'][o_id]
-        if best_m_id in models:
-            app_state['curr_model_idx'] = models.index(best_m_id)
-            update(0)
-
-def toggle_log(event):
-    app_state['log_error'] = not app_state['log_error']
-    update(0)
-
-def init_ui():
-    app_state['initialized'] = True
-
-    gs = fig.add_gridspec(1, 2, left=0.055, right=0.99, bottom=0.16, top=0.91, wspace=0.14)
-
-    app_state['ax_error'] = fig.add_subplot(gs[0, 0])
-    app_state['ax_acc'] = fig.add_subplot(gs[0, 1], sharex=app_state['ax_error'])
-
-    ax_prev_f = plt.axes([0.15, 0.04, 0.1, 0.05])
-    ax_next_f = plt.axes([0.26, 0.04, 0.1, 0.05])
-
-    ax_best   = plt.axes([0.45, 0.04, 0.1, 0.05])
-
-    ax_prev_m = plt.axes([0.64, 0.04, 0.1, 0.05])
-    ax_next_m = plt.axes([0.75, 0.04, 0.1, 0.05])
-
-    ax_log    = plt.axes([0.885, 0.04, 0.09, 0.05])
-
-    btn_prev_f = Button(ax_prev_f, '< Prev Fold')
-    btn_next_f = Button(ax_next_f, 'Next Fold >')
-
-    btn_best = Button(ax_best, 'Best Model', color='gold', hovercolor='yellow')
-
-    btn_prev_m = Button(ax_prev_m, '< Prev Model')
-    btn_next_m = Button(ax_next_m, 'Next Model >')
-
-    btn_log = Button(ax_log, 'Log Error')
-
-    btn_prev_f.on_clicked(prev_fold)
-    btn_next_f.on_clicked(next_fold)
-    btn_best.on_clicked(goto_best)
-    btn_prev_m.on_clicked(prev_model)
-    btn_next_m.on_clicked(next_model)
-    btn_log.on_clicked(toggle_log)
-
-    app_state['buttons'].extend([btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m, btn_log])
-
-def update(frame):
-    try:
-        csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
-
-        if not csv_files:
-            if not app_state['initialized']:
-                ax = fig.add_subplot(111)
-                ax.set_title("Waiting for data...")
+    def draw(self, ax, col, color, label, dashed=False, mark=None):
+        epoch = self.mean["epoch"]
+        ax.fill_between(epoch, self.mean[col] - self.sd[col], self.mean[col] + self.sd[col],
+                        where=self.complete, color=color, alpha=0.15, linewidth=0)
+        ax.plot(epoch, self.mean[col], color=color, linewidth=1.5,
+                linestyle="--" if dashed else "-", label=label)
+        if mark is None:
             return
+        x, y = self.mean.loc[self.best, "epoch"], self.mean.loc[self.best, col]
+        ax.axvline(x, color=color, linestyle=":", alpha=0.6)
+        ax.scatter(x, y, color=color, zorder=5)
+        ax.annotate(mark.format(y), (x, y), textcoords="offset points",
+                    xytext=(5, 5), color=color, fontweight="bold")
 
-        if not app_state['initialized']:
-            fig.clf()
-            init_ui()
 
-        models_per_outer = {}
-        for f in csv_files:
-            basename = os.path.basename(f)
-            match_inner = re.match(r'^outer(\d+)_inner_m(\d+)\.csv$', basename)
-            match_outer = re.match(r'^outer(\d+)_m(\d+)\.csv$', basename)
+class Viewer:
+    def __init__(self):
+        self.fig = plt.figure(figsize=(16, 7))
+        grid = self.fig.add_gridspec(1, 2, left=0.055, right=0.99, bottom=0.16, top=0.91, wspace=0.14)
+        self.ax_error = self.fig.add_subplot(grid[0, 0])
+        self.ax_acc = self.fig.add_subplot(grid[0, 1], sharex=self.ax_error)
+        self.outers, self.models, self.selected = [], {}, {}
+        self.outer_i, self.model_i, self.log_scale = 0, 0, False
 
-            if match_inner:
-                o_id, m_id = int(match_inner.group(1)), match_inner.group(2)
-                models_per_outer.setdefault(o_id, set()).add(m_id)
-            elif match_outer:
-                o_id, m_id = int(match_outer.group(1)), match_outer.group(2)
-                models_per_outer.setdefault(o_id, set()).add(m_id)
-                app_state['best_model_per_outer'][o_id] = m_id
+        def button(x, label, action, **kw):
+            b = Button(plt.axes([x, 0.04, 0.1, 0.05]), label, **kw)
+            b.on_clicked(action)
+            return b
 
-        sorted_outer_ids = sorted(list(models_per_outer.keys()))
-        app_state['outer_ids'] = sorted_outer_ids
-        for o_id in sorted_outer_ids:
-            app_state['models_per_outer'][o_id] = sorted(list(models_per_outer[o_id]), key=int)
+        self.prev_fold = button(0.15, "< Prev Fold", self.step(outer=-1))
+        self.next_fold = button(0.26, "Next Fold >", self.step(outer=1))
+        self.goto_best = button(0.45, "Best Model", self.jump_to_best, color="gold", hovercolor="yellow")
+        self.prev_model = button(0.64, "< Prev Model", self.step(model=-1))
+        self.next_model = button(0.75, "Next Model >", self.step(model=1))
+        self.toggle = button(0.885, "Log Error", self.flip_scale)
 
-        if not app_state['outer_ids']:
-            return
+    def step(self, outer=0, model=0):
+        def action(_):
+            if outer:
+                self.outer_i = max(0, min(len(self.outers) - 1, self.outer_i + outer))
+                self.model_i = 0
+            if model:
+                self.model_i = max(0, min(len(self.models[self.outers[self.outer_i]]) - 1, self.model_i + model))
+            self.refresh()
+        return action
 
-        if app_state['curr_outer_idx'] >= len(app_state['outer_ids']):
-            app_state['curr_outer_idx'] = len(app_state['outer_ids']) - 1
+    def jump_to_best(self, _):
+        outer = self.outers[self.outer_i]
+        if outer in self.selected:
+            self.model_i = self.models[outer].index(self.selected[outer])
+            self.refresh()
 
-        o_id = app_state['outer_ids'][app_state['curr_outer_idx']]
-        models = app_state['models_per_outer'][o_id]
+    def flip_scale(self, _):
+        self.log_scale = not self.log_scale
+        self.refresh()
 
-        if app_state['curr_model_idx'] >= len(models):
-            app_state['curr_model_idx'] = len(models) - 1
+    def scan(self):
+        found, selected = {}, {}
+        for path in glob.glob(os.path.join(FOLDER, "*.csv")):
+            name = os.path.basename(path)
+            outer_match = OUTER.match(name)
+            match = INNER.match(name) or outer_match
+            if not match:
+                continue
+            outer, model = int(match.group(1)), int(match.group(2))
+            found.setdefault(outer, set()).add(model)
+            if outer_match:
+                selected[outer] = model
+        self.outers = sorted(found)
+        self.models = {o: sorted(m) for o, m in found.items()}
+        self.selected = selected
 
-        m_id = models[app_state['curr_model_idx']]
+    def enable_buttons(self, models):
+        for btn, on in [(self.prev_fold, self.outer_i > 0),
+                        (self.next_fold, self.outer_i < len(self.outers) - 1),
+                        (self.prev_model, self.model_i > 0),
+                        (self.next_model, self.model_i < len(models) - 1),
+                        (self.goto_best, self.outers[self.outer_i] in self.selected)]:
+            btn.set_active(on)
+            btn.label.set_alpha(1.0 if on else 0.3)
+        self.toggle.label.set_text("Linear Error" if self.log_scale else "Log Error")
 
-        if len(app_state['buttons']) == 6:
-            btn_prev_f, btn_next_f, btn_best, btn_prev_m, btn_next_m, btn_log = app_state['buttons']
-            btn_log.label.set_text('Linear Error' if app_state['log_error'] else 'Log Error')
-
-            def toggle_btn(btn, condition):
-                btn.set_active(condition)
-                btn.label.set_alpha(1.0 if condition else 0.3)
-
-            toggle_btn(btn_prev_f, app_state['curr_outer_idx'] > 0)
-            toggle_btn(btn_next_f, app_state['curr_outer_idx'] < len(app_state['outer_ids']) - 1)
-
-            toggle_btn(btn_prev_m, app_state['curr_model_idx'] > 0)
-            toggle_btn(btn_next_m, app_state['curr_model_idx'] < len(models) - 1)
-
-            best_m_id = app_state['best_model_per_outer'].get(o_id)
-            toggle_btn(btn_best, best_m_id is not None)
-
-        target_inner = os.path.join(folder_path, f"outer{o_id}_inner_m{m_id}.csv")
-
-        target_inner = os.path.join(folder_path, f"outer{o_id}_inner_m{m_id}.csv")
-        target_outer = os.path.join(folder_path, f"outer{o_id}_m{m_id}.csv")
-
-        inner_df = load_csv(target_inner)
-        outer_df = load_csv(target_outer)
-
-        has_inner = not inner_df.empty
-        has_outer = not outer_df.empty
-
-        model_name = f"Outer Fold: {o_id + 1}/{len(app_state['outer_ids'])}  |  Model: {m_id}"
-        plot_title = model_name # Overwritten below once we know whether this is an inner or outer run
-        num_folds = 0
-
-        ax1 = app_state['ax_error']
-        ax2 = app_state['ax_acc']
-
-        ax1.clear()
-        ax2.clear()
-
-        if has_inner:
-            inner_df['fold_id'] = (inner_df['epoch'] == 0).cumsum()
-            num_folds = inner_df['fold_id'].max()
-
-            metric_cols = [c for c in ('train_error', 'test_error', 'train_acc', 'test_acc') if c in inner_df.columns]
-            if metric_cols:
-                averaged = {
-                    c: inner_df.pivot_table(index='epoch', columns='fold_id', values=c).ffill().mean(axis=1)
-                    for c in metric_cols
-                }
-                plot_df = pd.DataFrame(averaged).reset_index()
-            else:
-                plot_df = inner_df.groupby('epoch').mean().reset_index()
-
-            if 'train_error' in plot_df.columns:
-                ax1.plot(plot_df['epoch'], plot_df['train_error'], linewidth=1.5, linestyle='--', color='purple', label='Training Error')
-                ax1.plot(plot_df['epoch'], plot_df['test_error'], linewidth=1.5, color='orange', label='Validation Error')
-
-                if not plot_df['test_error'].isnull().all() and not has_outer:
-                    best_idx = plot_df['test_error'].idxmin()
-                    best_ep = plot_df.loc[best_idx, 'epoch']
-                    best_val = plot_df.loc[best_idx, 'test_error']
-                    ax1.axvline(x=best_ep, color='orange', linestyle=':', alpha=0.6)
-                    ax1.scatter(best_ep, best_val, color='orange', zorder=5)
-                    ax1.annotate(f"{best_val:.3f}", (best_ep, best_val), textcoords="offset points", xytext=(5,5), color='orange', fontweight='bold')
-
-            if 'train_acc' in plot_df.columns:
-                ax2.plot(plot_df['epoch'], plot_df['train_acc'], linewidth=1.5, linestyle='--', color='purple', label='Training Accuracy')
-                ax2.plot(plot_df['epoch'], plot_df['test_acc'], linewidth=1.5, color='orange', label='Validation Accuracy')
-
-                if not plot_df['test_acc'].isnull().all() and not has_outer:
-                    best_idx = plot_df['test_acc'].idxmax()
-                    best_ep = plot_df.loc[best_idx, 'epoch']
-                    best_val = plot_df.loc[best_idx, 'test_acc']
-                    ax2.axvline(x=best_ep, color='orange', linestyle=':', alpha=0.6)
-                    ax2.scatter(best_ep, best_val, color='orange', zorder=5)
-                    ax2.annotate(f"{best_val:.1f}%", (best_ep, best_val), textcoords="offset points", xytext=(5,-12), color='orange', fontweight='bold')
-
-            plot_title = f"Grid Search ({num_folds} Folds):  {model_name}"
-
-        if has_outer:
-            if 'train_error' in outer_df.columns:
-                if not has_inner: 
-                    ax1.plot(outer_df['epoch'], outer_df['train_error'], color='purple', linestyle='--', linewidth=1.5, label='Train Error')
-                ax1.plot(outer_df['epoch'], outer_df['test_error'], color='blue', linewidth=1.5, label='Test Error')
-
-                if not outer_df['test_error'].isnull().all():
-                    best_idx = outer_df['test_error'].idxmin()
-                    best_ep = outer_df.loc[best_idx, 'epoch']
-                    best_val = outer_df.loc[best_idx, 'test_error']
-                    ax1.axvline(x=best_ep, color='blue', linestyle=':', alpha=0.6)
-                    ax1.scatter(best_ep, best_val, color='blue', zorder=5)
-                    ax1.annotate(f"{best_val:.3f}", (best_ep, best_val), textcoords="offset points", xytext=(5,5), color='blue', fontweight='bold')
-
-            if 'train_acc' in outer_df.columns:
-                if not has_inner: 
-                    ax2.plot(outer_df['epoch'], outer_df['train_acc'], color='purple', linestyle='--', linewidth=1.5, label='Train Accuracy')
-                ax2.plot(outer_df['epoch'], outer_df['test_acc'], color='blue', linewidth=1.5, label='Test Accuracy')
-
-                if not outer_df['test_acc'].isnull().all():
-                    best_idx = outer_df['test_acc'].idxmax()
-                    best_ep = outer_df.loc[best_idx, 'epoch']
-                    best_val = outer_df.loc[best_idx, 'test_acc']
-                    ax2.axvline(x=best_ep, color='blue', linestyle=':', alpha=0.6)
-                    ax2.scatter(best_ep, best_val, color='blue', zorder=5)
-                    ax2.annotate(f"{best_val:.1f}%", (best_ep, best_val), textcoords="offset points", xytext=(5,-12), color='blue', fontweight='bold')
-
-            plot_title = f"Best Model Evaluation:  {model_name}"
-
-        fig.suptitle(plot_title, fontsize=13, fontweight='bold')
-
-        ax1.set_title("Error (log scale)" if app_state['log_error'] else "Error", fontsize=11)
-        if app_state['log_error']:
-            ax1.set_yscale('log', nonpositive='mask')
-            ax1.autoscale(axis='y')
+    def style(self, title):
+        self.fig.suptitle(title, fontsize=13, fontweight="bold")
+        self.ax_error.set_title("Error (log scale)" if self.log_scale else "Error", fontsize=11)
+        if self.log_scale:
+            self.ax_error.set_yscale("log", nonpositive="mask")
+            self.ax_error.autoscale(axis="y")
         else:
-            ax1.set_yscale('linear')
-            ax1.set_ylim(bottom=0)
-        ax1.grid(True, which='both', linestyle='--', alpha=0.7)
-        ax1.set_ylabel("Error")
-        ax1.set_xlabel("Epoch")
+            self.ax_error.set_yscale("linear")
+            self.ax_error.set_ylim(bottom=0)
+        self.ax_acc.set_title("Accuracy", fontsize=11)
+        self.ax_acc.set_ylim(top=101)
+        for ax, ylabel, loc in [(self.ax_error, "Error", "upper right"), (self.ax_acc, "Accuracy (%)", "lower right")]:
+            ax.grid(True, which="both", linestyle="--", alpha=0.7)
+            ax.set_ylabel(ylabel)
+            ax.set_xlabel("Epoch")
+            if ax.get_legend_handles_labels()[0]:
+                ax.legend(loc=loc)
 
-        ax2.set_title("Accuracy", fontsize=11)
-        ax2.set_ylim(top=101)
-        ax2.grid(True, linestyle='--', alpha=0.7)
-        ax2.set_ylabel("Accuracy (%)")
-        ax2.set_xlabel("Epoch")
+    def refresh(self, _=None):
+        self.scan()
+        self.ax_error.clear()
+        self.ax_acc.clear()
+        if not self.outers:
+            self.style("Waiting for data...")
+            return
 
-        handles1, _ = ax1.get_legend_handles_labels()
-        if handles1: ax1.legend(loc="upper right")
+        self.outer_i = min(self.outer_i, len(self.outers) - 1)
+        outer = self.outers[self.outer_i]
+        models = self.models[outer]
+        self.model_i = min(self.model_i, len(models) - 1)
+        model = models[self.model_i]
+        self.enable_buttons(models)
 
-        handles2, _ = ax2.get_legend_handles_labels()
-        if handles2: ax2.legend(loc="lower right")
+        inner_df = load(os.path.join(FOLDER, f"outer{outer}_inner_m{model}.csv"))
+        outer_df = load(os.path.join(FOLDER, f"outer{outer}_m{model}.csv"))
+        header = f"Outer Fold: {self.outer_i + 1}/{len(self.outers)}  |  Model: {model}"
+        title = header
 
-    except Exception as e:
-        print(f"Plotting error: {e}")
+        if inner_df is not None:
+            runs = Runs(inner_df, retrain=False)
+            runs.draw(self.ax_error, "train_mse", TRAIN_COLOR, "Training Error", dashed=True)
+            runs.draw(self.ax_error, "test_mse", VALID_COLOR, "Validation Error",
+                      mark=None if outer_df is not None else "{:.3f}")
+            runs.draw(self.ax_acc, "train_acc", TRAIN_COLOR, "Training Accuracy", dashed=True)
+            runs.draw(self.ax_acc, "test_acc", VALID_COLOR, "Validation Accuracy",
+                      mark=None if outer_df is not None else "{:.1f}%")
+            spread = f"{runs.folds} Folds" + (f" x {runs.trials} Trials" if runs.trials > 1 else "")
+            title = f"Grid Search ({spread}):  {header}"
+
+        if outer_df is not None:
+            runs = Runs(outer_df, retrain=True)
+            if inner_df is None:
+                runs.draw(self.ax_error, "train_mse", TRAIN_COLOR, "Train Error", dashed=True)
+                runs.draw(self.ax_acc, "train_acc", TRAIN_COLOR, "Train Accuracy", dashed=True)
+            runs.draw(self.ax_error, "test_mse", TEST_COLOR, "Test Error", mark="{:.3f}")
+            runs.draw(self.ax_acc, "test_acc", TEST_COLOR, "Test Accuracy", mark="{:.1f}%")
+            trials = f" ({runs.trials} Trials)" if runs.trials > 1 else ""
+            title = f"Best Model Evaluation{trials}:  {header}"
+
+        self.style(title)
+
 
 if __name__ == "__main__":
-    anim = FuncAnimation(fig, update, interval=1000, cache_frame_data=False)
+    viewer = Viewer()
+    animation = FuncAnimation(viewer.fig, viewer.refresh, interval=1000, cache_frame_data=False)
     plt.show()
