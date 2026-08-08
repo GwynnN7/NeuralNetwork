@@ -16,6 +16,8 @@ METRICS = ["train_error", "test_error", "train_mse", "test_mse", "train_acc", "t
 TRAIN_COLOR = "purple"
 VALID_COLOR = "orange"
 TEST_COLOR = "blue"
+BAND_LEVELS = [1.0, 0.75, 0.5, 0.25]
+BAND_ALPHA = 0.05
 
 
 def load(path):
@@ -32,19 +34,22 @@ class Runs:
         self.count = int(live.max())
         self.mean = pd.DataFrame({c: p.ffill().mean(axis=1) for c, p in pivots.items()}).reset_index()
         self.sd = pd.DataFrame({c: p.std(axis=1, ddof=1) for c, p in pivots.items()}).reset_index()
-        self.complete = (live == self.count).to_numpy()
-        if retrain and self.complete.any():
-            self.mean = self.mean[self.complete]
-            self.sd = self.sd[self.complete]
-            self.complete = self.complete[self.complete]
+        complete = (live == self.count).to_numpy()
+        if retrain and complete.any():
+            self.mean = self.mean[complete]
+            self.sd = self.sd[complete]
+            live = live[complete]
+        self.live = live.to_numpy()
         self.folds = df["fold"].nunique()
         self.trials = df["trial"].nunique()
         self.best = self.mean["train_error" if retrain else "test_error"].idxmin()
 
     def draw(self, ax, col, color, label, dashed=False, mark=None):
         epoch = self.mean["epoch"]
-        ax.fill_between(epoch, self.mean[col] - self.sd[col], self.mean[col] + self.sd[col],
-                        where=self.complete, color=color, alpha=0.15, linewidth=0)
+        low, high = self.mean[col] - self.sd[col], self.mean[col] + self.sd[col]
+        for level in BAND_LEVELS:
+            ax.fill_between(epoch, low, high, where=self.live >= max(2, int(self.count * level)),
+                            color=color, alpha=BAND_ALPHA, linewidth=0)
         ax.plot(epoch, self.mean[col], color=color, linewidth=1.5,
                 linestyle="--" if dashed else "-", label=label)
         if mark is None:

@@ -19,9 +19,12 @@ struct Stats {
 struct RunSummary {
     std::vector<Metrics> runs;
 
-    void add_trial(const Metrics& run) { runs.push_back(run); }
     bool empty() const { return runs.empty(); }
     size_t size() const { return runs.size(); }
+
+    void add_trial(const Metrics& run) {
+        runs.push_back(run);
+    }
 
     Stats get(Scalar Metrics::* field) const {
         if (runs.empty()) {
@@ -43,11 +46,11 @@ struct RunSummary {
         }
         if (track_accuracy) {
             const Stats acc = get(&Metrics::accuracy);
-            std::println(" • Accuracy:   {:.2f}% +- {:.2f}%", acc.mean * 100.0, acc.std * 100.0);
+            std::println(" • Accuracy: {:.2f}%±{:.2f}%", acc.mean * 100.0, acc.std * 100.0);
         }
         const Stats err = get(&Metrics::error);
         const Stats mse = get(&Metrics::mse);
-        std::println(" • Error: {:.4f} +- {:.4f}   MSE: {:.4f} +- {:.4f}   (over {} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
+        std::println(" • Error: {:.3f}±{:.3f} - MSE: {:.3f}±{:.3f} ({} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
     }
 };
 
@@ -61,7 +64,13 @@ struct SplitSummary {
         holdout.add_trial(run.holdout.at(run.best_epoch));
     }
 
-    void print(bool track_accuracy, const std::string& holdout_name = "Held-out") const {
+    void add_trial(const Metrics& training_metrics, const Metrics& holdout_metrics) {
+        training.add_trial(training_metrics);
+        holdout.add_trial(holdout_metrics);
+    }
+
+    void print(bool track_accuracy, const std::string& holdout_name = "Holdout") const {
+        std::println("\nSplit Summary:");
         std::println(" • Training Set:");
         training.print(track_accuracy);
         std::println(" • {} Set:", holdout_name);

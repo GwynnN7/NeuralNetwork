@@ -4,7 +4,6 @@
 #include "types.hpp"
 #include "utility.hpp"
 
-#include <print>
 #include <vector>
 
 // Measures computed from a set of targets and predictions
@@ -136,17 +135,6 @@ struct LearningCurve {
         }
     }
 
-    void print(bool track_accuracy, int epoch = -1) const {
-        if (empty()) {
-            std::println(" • (no metrics recorded)");
-            return;
-        }
-        const Metrics& metric = at(epoch);
-        if (track_accuracy) {
-            std::println(" • Accuracy:   {:.2f}%", metric.accuracy * 100.0);
-        }
-        std::println(" • Error: {:.3f}   MSE: {:.3f}", metric.error, metric.mse);
-    }
 };
 
 // The result of a single training run
@@ -160,11 +148,4 @@ struct RunCurves {
     RunCurves(TaskType task_type = TaskType::REGRESSION) : task(task_type) {};
 
     bool track_accuracy() const { return task == TaskType::CLASSIFICATION; }
-
-    void print() const {
-        std::println("\nTraining Set Metrics:");
-        training.print(track_accuracy(), best_epoch);
-        std::println("Held-out Set Metrics:");
-        holdout.print(track_accuracy(), best_epoch);
-    }
 };

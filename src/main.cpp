@@ -187,12 +187,14 @@ void test(const Dataset& dataset, const Args& args) {
         const Matrix final_train_predictions = network->predict(train_features);
         const Matrix final_test_predictions = network->predict(test_features);
 
-        // Calculate metrics for the split and print them
+        // A loaded model is evaluated once, so there is no curve and no spread to report here
         const bool track_accuracy = (network->model.task == TaskType::CLASSIFICATION);
-        RunCurves results(network->model.task);
-        results.training.append_epoch(train_labels, final_train_predictions, network->model.loss_type, track_accuracy);
-        results.holdout.append_epoch(test_labels, final_test_predictions, network->model.loss_type, track_accuracy);
-        results.print();
+        const LossType loss = network->model.loss_type;
+
+        SplitSummary summary;
+        summary.add_trial(Metrics::evaluate(train_labels, final_train_predictions, loss, track_accuracy),
+                          Metrics::evaluate(test_labels, final_test_predictions, loss, track_accuracy));
+        summary.print(track_accuracy, "Test");
     }
 }
 
