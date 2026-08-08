@@ -1,5 +1,7 @@
 #pragma once
 
+#include "types.hpp"
+
 #include <charconv>
 #include <csignal>
 #include <fstream>
@@ -40,6 +42,17 @@ inline void set_trial_seed(unsigned int seed, int trial, int fold) {
 // Set the random seed for reproducibility
 inline void set_split_seed(unsigned int seed) {
     get_split_generator().seed(seed);
+}
+
+// Get the class index for a given sample from the labels
+inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
+    if (labels.rows() == 1) { // Binary classification
+        return labels(0, sample_index) >= Scalar(0.5) ? 1 : 0;
+    } else { // Multi-class classification
+        Eigen::Index class_index;
+        labels.col(sample_index).maxCoeff(&class_index);
+        return static_cast<int>(class_index);
+    }
 }
 
 // Trim leading and trailing whitespace from a string

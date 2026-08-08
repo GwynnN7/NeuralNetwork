@@ -146,21 +146,21 @@ Matrix Network::forward(const Matrix& input) {
 
 // Training backward pass, propagates the gradient from the error to the first layer.
 // delta_k = (d_k - o_k) f'(net_k) for an output unit and delta_j = (sum_k(delta_k w_kj)) f'(net_j) for a hidden unit
-void Network::backward(const Matrix& output_gradient) {
+void Network::backward(const Matrix& output_gradient, Scalar batch_fraction) {
     Matrix gradient = output_gradient;
     for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
         const bool is_first_layer = (std::next(it) == layers.rend());
-        gradient = (*it)->backward(gradient, model, is_first_layer);
+        gradient = (*it)->backward(gradient, model, batch_fraction, is_first_layer);
     }
 }
 
 // Train the network using the dataset provided by the model_set
-SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
+RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
     // Run constants
-    const bool is_first_run = !ctx.in_model_selection || ctx.inner_index == 0;
+    const bool is_first_run = (!ctx.in_model_selection || ctx.inner_index == 0) && ctx.trial == 0;
 
     // Logging and metrics variables
-    SplitResults split_results(model.task);
+    RunCurves result(model.task);
     int logged_epoch = 0;
 
     // Validate the split
@@ -188,20 +188,26 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
                 throw std::runtime_error("Failed to open log file: " + log_filename);
             }
             if (is_first_run) {
-                log_file << "epoch,train_error,test_error,train_acc,test_acc\n";
+                log_file << "fold,trial,epoch,train_error,test_error,train_mse,test_mse,train_acc,test_acc,train_brier,test_brier\n";
             }
         }
         // Sync the logged epoch with the available metrics
-        const int available = static_cast<int>(std::min(split_results.train_metrics.size(), split_results.test_metrics.size()));
+        const int available = static_cast<int>(std::min(result.training.size(), result.holdout.size()));
         const int last = std::min(upto_epoch, available - 1);
         while (logged_epoch <= last) {
-            const EpochMetric& train = split_results.train_metrics.epochs[logged_epoch];
-            const EpochMetric& test = split_results.test_metrics.epochs[logged_epoch];
-            log_file << logged_epoch << ","
+            const Metrics& train = result.training.epochs[logged_epoch];
+            const Metrics& holdout = result.holdout.epochs[logged_epoch];
+            log_file << ctx.inner_index << ","
+                     << ctx.trial << ","
+                     << logged_epoch << ","
                      << train.error << ","
-                     << test.error << ","
+                     << holdout.error << ","
+                     << train.mse << ","
+                     << holdout.mse << ","
                      << train.accuracy * 100.0 << ","
-                     << test.accuracy * 100.0 << "\n";
+                     << holdout.accuracy * 100.0 << ","
+                     << train.brier << ","
+                     << holdout.brier << "\n";
             logged_epoch++;
         }
         log_file.flush();
@@ -224,8 +230,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     std::vector<int> epoch_indices = indices.train_indices;
 
     for (int i = 0; i < ctx.epochs; i++) {
-        // Shuffle the training data indices for current epoch
-        std::ranges::shuffle(epoch_indices, get_random_generator());
+        std::ranges::shuffle(epoch_indices, get_trial_generator());
 
         // Update the learning rate
         if (i < warmup_epochs) {
@@ -237,7 +242,7 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
             model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
         }
 
-        MetricsResult batch_metrics;
+        LearningCurve batch_epoch;
         // Loop through each batch in the current epoch
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
             // Determine the starting index and size for the current batch
@@ -253,18 +258,19 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
             Matrix batch_prediction = forward(batch_features);
 
             // Calculate the loss and accuracy for the current batch and accumulate for the epoch
-            batch_metrics.add(batch_labels, batch_prediction, loss_func, split_results.track_accuracy());
+            batch_epoch.add_batch(batch_labels, batch_prediction, model.loss_type, result.track_accuracy());
 
+            const Scalar batch_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
             // Start the backward pass to update weights and biases based on the output loss gradient
-            backward(loss_derivative(batch_labels, batch_prediction));
+            backward(loss_derivative(batch_labels, batch_prediction), batch_fraction);
         }
-        split_results.train_metrics.append(batch_metrics);
-        split_results.train_metrics.average_last();
+        result.training.append_epochs(batch_epoch);
+        result.training.normalize_epoch();
 
         // Check for NaN or Inf in the latest training error to stop training
-        if (!std::isfinite(split_results.train_metrics.last_error())) {
-            split_results.train_metrics.invalid = true;
-            split_results.test_metrics.invalid = true;
+        if (!std::isfinite(result.training.last_error())) {
+            result.training.invalid = true;
+            result.holdout.invalid = true;
             std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             break;
         }
@@ -273,18 +279,19 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         const bool predict_test = (ctx.patience > 0 && ctx.in_model_selection) || ctx.logging;
         if (predict_test) {
             Matrix test_prediction = predict(test_features);
-            split_results.test_metrics.append(test_labels, test_prediction, loss_func, split_results.track_accuracy());
+            result.holdout.append_epoch(test_labels, test_prediction, model.loss_type, result.track_accuracy());
         }
 
         // Early stopping logic based on the patience parameter
         // In model selection the holdout split is the validation set, so it is used to determine when to stop
         // Outside model selection, the training error is used because the holdout split is the test set
         if (ctx.patience > 0) {
-            Scalar current_error = ctx.in_model_selection ? split_results.test_metrics.last_error() : split_results.train_metrics.last_error();
+            Scalar current_error = ctx.in_model_selection ? result.holdout.last_error() : result.training.last_error();
             // If the current error is better than the best error so far (with tolerance), reset the patience counter and save the model parameters
             if (i == 0 || current_error < patience_error - std::abs(patience_error) * ES_TOLERANCE) {
                 epochs_without_improvement = 0;
                 patience_error = current_error;
+                result.best_epoch = i;
                 snapshotParameters(); // Save the current parameters as the best epoch
             } else {
                 epochs_without_improvement++;
@@ -310,9 +317,12 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
         }
     }
 
-    // Roll back to the parameters of the best epoch if early stopping was triggered automatically
-    if (auto_early_stop_flag) {
+    // Roll back to the parameters of the best epoch
+    if (ctx.patience > 0) {
         restoreParameters();
+    } else {
+        // Without early stopping nothing was snapshotted, so the run ends on its final epoch
+        result.best_epoch = static_cast<int>(result.training.size()) - 1;
     }
 
     // Write final epochs to the log file
@@ -326,5 +336,5 @@ SplitResults Network::train(const Dataset& dataset, const DataSplit& indices, co
     model.eta = initial_eta; // Restore the configured learning rate after decay
     early_stop_flag = 0;     // Reset the early stop flag for the next fold
 
-    return split_results;
+    return result;
 }

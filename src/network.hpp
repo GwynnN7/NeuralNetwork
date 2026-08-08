@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dataset.hpp"
+#include "datasplit.hpp"
 #include "layer.hpp"
 #include "metrics.hpp"
 #include "model.hpp"
@@ -11,6 +11,7 @@
 
 // Context for a training run
 struct TrainContext {
+    int trial = 0;
     int epochs = 0;
     Scalar patience = 0.0; // Patience for early stopping
     Scalar warmup = 0.0;   // Warmup ratio for learning rate
@@ -38,7 +39,7 @@ class Network {
     void restoreParameters();
 
     Matrix forward(const Matrix& input);
-    void backward(const Matrix& output_gradient);
+    void backward(const Matrix& output_gradient, Scalar batch_fraction);
 
   public:
     explicit Network(const Model& model);
@@ -49,8 +50,7 @@ class Network {
     Model model;
 
     Matrix predict(const Matrix& input) const;
-    SplitResults train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx);
+    RunCurves train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx);
 
     std::vector<const DenseLayer*> getDenseLayers() const;
-    const LossFunction& getLossFunction() const { return loss_func; }
 };

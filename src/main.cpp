@@ -1,7 +1,10 @@
 #include "cli.hpp"
 #include "dataset.hpp"
+#include "datasplit.hpp"
 #include "model.hpp"
 #include "network.hpp"
+#include "selection.hpp"
+#include "summary.hpp"
 #include "types.hpp"
 #include "utility.hpp"
 
@@ -12,114 +15,121 @@
 #include <print>
 #include <vector>
 
-namespace {
-// The split used for the final dump and for inference
-DataSplit main_split(const Dataset& dataset, const Args& args) {
-    return DataSplit::split(1, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle, static_cast<unsigned int>(args.seed)).front();
-}
-} // namespace
-
 void train(const Dataset& dataset, const Args& args) {
-    // Prepare outer folds for cross-validation and load the grid search parameters
-    const std::vector<DataSplit> outer_folds = DataSplit::split(args.outer_folds, args.train_ratio, dataset.train_samples, dataset.num_samples, args.shuffle);
-    std::vector<Model> grid_search = Model::load_grid_search(args.grid_file);
-    for (auto& grid_model : grid_search) {
-        grid_model.task = dataset.task; // Assign the task type to the model based on the dataset
-    }
+    // Prepare the main split for final evaluation and dumping of best models
+    // Every split for this run comes from here, so the dataset and the options behind them stay visible
+    const Splitter splitter{dataset, args};
+    const DataSplit final_split = splitter.final_split();
 
-    // Initialize a vector to store the best models for each outer fold
+    // Load the grid search parameters and assign the task type to the model based on the dataset
+    std::vector<Model> grid_search = Model::load_grid_search(args.grid_file);
+    std::for_each(grid_search.begin(), grid_search.end(), [&dataset](Model& model) { model.task = dataset.task; });
+
+    // Initialize outer folds variables
+    const std::vector<DataSplit> outer_folds = splitter.get(args.outer_folds);
     std::vector<Model> best_models;
     best_models.reserve(outer_folds.size());
+    // Initialize a vector to store the summary of the best model of each outer fold
+    std::vector<SplitSummary> assessment_summaries(outer_folds.size());
 
     // Outer loop for cross-validation
     for (size_t i = 0; i < outer_folds.size(); ++i) {
         const int outer_index = static_cast<int>(i);
 
         // Prepare inner folds for model selection, on training set of the current outer fold (train_valid)
-        // Pass train_samples as 0 for inner folds since it is only relevant for outer folds
-        std::vector<DataSplit> inner_folds = DataSplit::split(args.inner_folds, args.train_ratio, 0, static_cast<int>(outer_folds[i].train_indices.size()), args.shuffle);
+        std::vector<DataSplit> inner_folds = splitter.get(args.inner_folds, &outer_folds[i].train_indices);
+        bool in_model_selection = grid_search.size() > 1;
 
-        // Remap the inner fold indices to the original dataset indices
-        for (auto& inner_fold : inner_folds) {
-            for (int& relative_idx : inner_fold.train_indices) {
-                relative_idx = outer_folds[i].train_indices[relative_idx];
-            }
-            for (int& relative_idx : inner_fold.test_indices) {
-                relative_idx = outer_folds[i].train_indices[relative_idx];
-            }
-        }
-        bool model_selection = !inner_folds.empty() && grid_search.size() > 1; // Determine if model selection is needed
-
-        // Variables to track the best model and its performance across inner folds
+        // Variables to track the best model and its score across inner folds
         size_t best_model_index = 0;
-        SplitResults best_performance(dataset.task);
+        SelectionScore best_score;
 
         // Inner loop for model selection, skipped when there is nothing to select
-        for (size_t m = 0; model_selection && m < grid_search.size(); ++m) {
+        for (size_t m = 0; in_model_selection && m < grid_search.size(); ++m) {
+            // Get next model and print its configuration
             const Model& grid_model = grid_search[m];
-            grid_model.print(); // Print the model configuration for logging
+            grid_model.print();
 
-            SplitResults current_performance(dataset.task); // Metrics for the current model across inner folds
+            // Run the model on each inner fold and collect scores for selection and summary for statistics
+            std::vector<SelectionScore> model_scores;
+            SplitSummary model_summary;
             for (size_t j = 0; j < inner_folds.size(); ++j) {
-                // Create a new network for the current model configuration
-                Network network(grid_model, dataset.num_features, dataset.num_classes);
+                for (int t = 0; t < args.trials; ++t) { // Loop over trials for the current inner fold
+                    set_trial_seed(args.seed, t, j);    // Seed the trial generator for reproducibility
 
-                const TrainContext ctx{
-                    .epochs = args.epochs,
-                    .patience = args.patience,
-                    .warmup = args.warmup,
-                    .model_id = grid_model.id,
-                    .outer_index = outer_index,
-                    .inner_index = static_cast<int>(j),
-                    .in_model_selection = true,
-                    .logging = true,
-                };
+                    Network network(grid_model, dataset.num_features, dataset.num_classes);
 
-                // Train the model on the current inner fold
-                const SplitResults train_results = network.train(dataset, inner_folds[j], ctx);
-                current_performance.add(train_results); // Accumulate metrics for the current model across inner folds
+                    const TrainContext ctx{
+                        .trial = t,
+                        .epochs = args.epochs,
+                        .patience = args.patience,
+                        .warmup = args.warmup,
+                        .model_id = grid_model.id,
+                        .outer_index = outer_index,
+                        .inner_index = static_cast<int>(j),
+                        .in_model_selection = true,
+                        .logging = true,
+                    };
+
+                    // Train the model on the current inner fold
+                    const RunCurves run = network.train(dataset, inner_folds[j], ctx);
+                    model_scores.push_back(SelectionScore::from_run(run));
+                    model_summary.add_trial(run);
+                }
             }
-            current_performance.average(); // Average the metrics across inner folds for the current model to get a single performance metric
 
-            // Compare the current model's performance with the best model's performance and update if it's better
-            if (m == 0 || current_performance.is_better_than(best_performance)) {
+            model_summary.print(dataset.task == TaskType::CLASSIFICATION, "Validation");
+
+            // Calculate the average score of the model across all inner folds and trials
+            const SelectionScore average_score = SelectionScore::average_scores(model_scores);
+            // Keep the model with the best final score
+            if (average_score.valid() && (m == 0 || !best_score.valid() || average_score < best_score)) {
                 best_model_index = m;
-                best_performance = current_performance;
+                best_score = average_score;
             }
         }
 
         best_models.push_back(grid_search[best_model_index]);
-
-        if (model_selection) {
+        if (in_model_selection) {
             std::println("\nRetraining the best model for Outer Fold {}: Model {}", outer_index, best_models[i].id);
         }
         best_models[i].print();
 
-        // (Re)Train the best model of each outer fold on the train(_valid) set
-        Network best_fold_network(best_models[i], dataset.num_features, dataset.num_classes);
-        const TrainContext ctx{
-            .epochs = args.epochs,
-            .patience = args.patience,
-            .warmup = args.warmup,
-            .model_id = best_models[i].id,
-            .outer_index = outer_index,
-            .inner_index = -1,
-            .in_model_selection = false,
-            .logging = true,
-        };
-        best_fold_network.train(dataset, outer_folds[i], ctx);
+        // (Re)train the best model on the entire training set of the outer fold
+        for (int t = 0; t < args.trials; ++t) {
+            set_trial_seed(args.seed, t, -1);
+
+            Network best_fold_network(best_models[i], dataset.num_features, dataset.num_classes);
+            const TrainContext ctx{
+                .trial = t,
+                .epochs = args.epochs,
+                .patience = args.patience,
+                .warmup = args.warmup,
+                .model_id = best_models[i].id,
+                .outer_index = outer_index,
+                .inner_index = -1,
+                .in_model_selection = false,
+                .logging = true,
+            };
+            const RunCurves run = best_fold_network.train(dataset, outer_folds[i], ctx);
+            assessment_summaries[i].add_trial(run);
+        }
     }
 
+    // Print the summary of the best models found for each outer fold
     std::println("\n[Best Models Summary]");
+    const bool track_accuracy = (dataset.task == TaskType::CLASSIFICATION);
     for (size_t i = 0; i < best_models.size(); ++i) {
-        std::println(" • Fold {}: Model {}", i, best_models[i].id);
+        std::println("\n • Fold {}: Model {}", i, best_models[i].id);
+        assessment_summaries[i].print(track_accuracy, "Test");
     }
 
+    // Dump the best models found with cross-validation, trained on the original train/test split (if applicable)
     if (args.dump) {
         std::print("\n[Dumping Best Models]");
-        // Dump the best models found with cross-validation, trained on the original train/test split (if applicable)
-        const DataSplit split = main_split(dataset, args);
         for (size_t i = 0; i < best_models.size(); ++i) {
+            set_trial_seed(args.seed, 0, -1);
+
             Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
             const TrainContext ctx{
                 .epochs = args.epochs,
@@ -131,7 +141,7 @@ void train(const Dataset& dataset, const Args& args) {
                 .in_model_selection = false,
                 .logging = false,
             };
-            final_network.train(dataset, split, ctx);
+            final_network.train(dataset, final_split, ctx);
             Serializer::dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], final_network);
         }
     }
@@ -155,14 +165,15 @@ void test(const Dataset& dataset, const Args& args) {
         throw std::runtime_error("No .bin model files found in " + MODEL_PATH + " (run with --train --dump first)");
     }
 
-    // Get the main split for evaluation
-    const DataSplit split = main_split(dataset, args);
+    // Get the same split the dumped models were trained on
+    const Splitter splitter{dataset, args};
+    const DataSplit final_split = splitter.final_split();
 
     // Extract training and testing features and labels for the split
-    const Matrix train_features = dataset.features(Eigen::placeholders::all, split.train_indices);
-    const Matrix train_labels = dataset.labels(Eigen::placeholders::all, split.train_indices);
-    const Matrix test_features = dataset.features(Eigen::placeholders::all, split.test_indices);
-    const Matrix test_labels = dataset.labels(Eigen::placeholders::all, split.test_indices);
+    const Matrix train_features = dataset.features(Eigen::placeholders::all, final_split.train_indices);
+    const Matrix train_labels = dataset.labels(Eigen::placeholders::all, final_split.train_indices);
+    const Matrix test_features = dataset.features(Eigen::placeholders::all, final_split.test_indices);
+    const Matrix test_labels = dataset.labels(Eigen::placeholders::all, final_split.test_indices);
 
     // Load the best models trained and evaluate them
     for (const auto& file : models) {
@@ -178,9 +189,9 @@ void test(const Dataset& dataset, const Args& args) {
 
         // Calculate metrics for the split and print them
         const bool track_accuracy = (network->model.task == TaskType::CLASSIFICATION);
-        SplitResults results(network->model.task);
-        results.train_metrics.append(train_labels, final_train_predictions, network->getLossFunction(), track_accuracy);
-        results.test_metrics.append(test_labels, final_test_predictions, network->getLossFunction(), track_accuracy);
+        RunCurves results(network->model.task);
+        results.training.append_epoch(train_labels, final_train_predictions, network->model.loss_type, track_accuracy);
+        results.holdout.append_epoch(test_labels, final_test_predictions, network->model.loss_type, track_accuracy);
         results.print();
     }
 }
@@ -197,7 +208,7 @@ int main(int argc, char* argv[]) {
         std::filesystem::create_directories(MODEL_PATH);
 
         // Set the random seed for reproducibility
-        set_random_seed(static_cast<unsigned int>(args.seed));
+        set_split_seed(static_cast<unsigned int>(args.seed));
 
         // Load the dataset
         Dataset dataset = Dataset::load(args.dataset_type, args.dataset_ratio);
