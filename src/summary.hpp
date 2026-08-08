@@ -41,16 +41,16 @@ struct RunSummary {
 
     void print(bool track_accuracy) const {
         if (runs.empty()) {
-            std::println(" • (no runs recorded)");
+            std::println("  • (no runs recorded)");
             return;
         }
         if (track_accuracy) {
             const Stats acc = get(&Metrics::accuracy);
-            std::println(" • Accuracy: {:.2f}%±{:.2f}%", acc.mean * 100.0, acc.std * 100.0);
+            std::println("  • Accuracy: {:.2f}% ± {:.2f}%", acc.mean * 100.0, acc.std * 100.0);
         }
         const Stats err = get(&Metrics::error);
         const Stats mse = get(&Metrics::mse);
-        std::println(" • Error: {:.3f}±{:.3f} - MSE: {:.3f}±{:.3f} ({} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
+        std::println("  • Error: {:.3f} ± {:.3f} - MSE: {:.3f} ± {:.3f} ({} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
     }
 };
 

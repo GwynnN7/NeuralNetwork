@@ -16,8 +16,7 @@ METRICS = ["train_error", "test_error", "train_mse", "test_mse", "train_acc", "t
 TRAIN_COLOR = "purple"
 VALID_COLOR = "orange"
 TEST_COLOR = "blue"
-BAND_LEVELS = [1.0, 0.75, 0.5, 0.25]
-BAND_ALPHA = 0.05
+BAND_ALPHA = 0.18
 
 
 def load(path):
@@ -32,24 +31,21 @@ class Runs:
         pivots = {c: df.pivot_table(index="epoch", columns=["fold", "trial"], values=c) for c in METRICS}
         live = next(iter(pivots.values())).notna().sum(axis=1)
         self.count = int(live.max())
-        self.mean = pd.DataFrame({c: p.ffill().mean(axis=1) for c, p in pivots.items()}).reset_index()
-        self.sd = pd.DataFrame({c: p.std(axis=1, ddof=1) for c, p in pivots.items()}).reset_index()
+        filled = {c: p.ffill() for c, p in pivots.items()}
+        self.mean = pd.DataFrame({c: p.mean(axis=1) for c, p in filled.items()}).reset_index()
+        self.sd = pd.DataFrame({c: p.std(axis=1, ddof=1) for c, p in filled.items()}).reset_index()
         complete = (live == self.count).to_numpy()
         if retrain and complete.any():
             self.mean = self.mean[complete]
             self.sd = self.sd[complete]
-            live = live[complete]
-        self.live = live.to_numpy()
         self.folds = df["fold"].nunique()
         self.trials = df["trial"].nunique()
         self.best = self.mean["train_error" if retrain else "test_error"].idxmin()
 
     def draw(self, ax, col, color, label, dashed=False, mark=None):
         epoch = self.mean["epoch"]
-        low, high = self.mean[col] - self.sd[col], self.mean[col] + self.sd[col]
-        for level in BAND_LEVELS:
-            ax.fill_between(epoch, low, high, where=self.live >= max(2, int(self.count * level)),
-                            color=color, alpha=BAND_ALPHA, linewidth=0)
+        ax.fill_between(epoch, self.mean[col] - self.sd[col], self.mean[col] + self.sd[col],
+                        color=color, alpha=BAND_ALPHA, linewidth=0)
         ax.plot(epoch, self.mean[col], color=color, linewidth=1.5,
                 linestyle="--" if dashed else "-", label=label)
         if mark is None:
