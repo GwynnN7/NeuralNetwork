@@ -39,13 +39,13 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
     case InitType::HE: {
         std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
         for (Eigen::Index i = 0; i < W.size(); ++i) {
-            W(i) = normal_dist(get_random_generator());
+            W(i) = normal_dist(get_trial_generator());
         }
     } break;
     default: {
         std::uniform_real_distribution<Scalar> uniform_dist(-distribution_value, distribution_value);
         for (Eigen::Index i = 0; i < W.size(); ++i) {
-            W(i) = uniform_dist(get_random_generator());
+            W(i) = uniform_dist(get_trial_generator());
         }
     } break;
     }
@@ -73,9 +73,10 @@ Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
 }
 
 // Backward pass through the DenseLayer, updating weights and biases based on the output gradient
-Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, bool is_first_layer) {
-    Matrix weights_delta = (output_gradient * X.transpose()) / X.cols(); // Calculate the delta of weights (average over the batch)
-    Vector bias_delta = output_gradient.rowwise().sum() / X.cols();      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
+Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) {
+    const int batch_size = static_cast<int>(X.cols());
+    Matrix weights_delta = (output_gradient * X.transpose()) / batch_size; // Calculate the delta of weights (average over the batch)
+    Vector bias_delta = output_gradient.rowwise().sum() / batch_size;      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
 
     // Calculate the neuron gradient to propagate to the previous layer. Skipped for the first layer of the network
     Matrix input_gradient;
@@ -84,7 +85,7 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, b
     }
 
     // Update weights and biases using the optimizer
-    optimizer->update(W, b, weights_delta, bias_delta, model);
+    optimizer->update(W, b, weights_delta, bias_delta, model, batch_fraction);
 
     return input_gradient;
 }
@@ -109,7 +110,7 @@ Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
 }
 
 // Backward pass through the ActivationLayer, calculating the gradient with respect to the input
-Matrix ActivationLayer::backward(const Matrix& output_gradient, const Model&, bool) {
+Matrix ActivationLayer::backward(const Matrix& output_gradient, const Model&, Scalar, bool) {
     if (skip_derivative) {
         return output_gradient; // Multiplying by this derivative would do nothing or fail
     }

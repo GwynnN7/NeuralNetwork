@@ -24,6 +24,8 @@ using ActivationFunction = std::function<Matrix(const Matrix&)>;
 inline constexpr Scalar EPSILON = 1e-8;
 // Define a small epsilon value to avoid log(0) in loss functions (that works for both float and double, *8 is a safety for single precision)
 inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
+// Define a constant for infinity, used in metrics and selection scores
+inline constexpr Scalar INF = std::numeric_limits<Scalar>::infinity();
 
 // Define a relative tolerance for early stopping
 inline constexpr Scalar ES_TOLERANCE = 0.001;
