@@ -2,18 +2,16 @@
 
 #include "types.hpp"
 
-#include <optional>
 #include <utility>
-#include <vector>
 
 struct Dataset {
     DatasetType type;
     TaskType task;
     Matrix features, labels;
     int num_samples, num_features, num_classes;
-    int train_samples; // Store the original number of training samples for datasets that have a predefined train/test split
+    std::optional<int> train_samples; // Store the original number of training samples for datasets that have a predefined train/test split
 
-    Dataset(DatasetType type, TaskType task, Matrix features, Matrix labels, int train_samples = 0)
+    Dataset(DatasetType type, TaskType task, Matrix features, Matrix labels, std::optional<int> train_samples = std::nullopt)
         : type(type), task(task), features(std::move(features)), labels(std::move(labels)), train_samples(train_samples) {
 
         num_samples = static_cast<int>(this->features.cols());
@@ -30,11 +28,4 @@ struct Dataset {
 
     void print_info() const;
     static Dataset load(DatasetType type, Scalar dataset_ratio);
-};
-
-struct DataSplit {
-    std::vector<int> train_indices;
-    std::vector<int> test_indices;
-
-    static std::vector<DataSplit> split(int k, Scalar train_ratio, int train_samples, int num_samples, bool shuffle, std::optional<unsigned int> seed = std::nullopt);
 };
