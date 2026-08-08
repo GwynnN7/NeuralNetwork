@@ -18,7 +18,8 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 * **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK1(_HOT)`, `MONK2(_HOT)`, `MONK3(_HOT)`.
     * The `_HOT` datasets are one-hot encoded versions of the original datasets.
 * **Logging & Visualization**: 
-    * `CSV` logging of per-fold loss and accuracy.
+    * `CSV` logging of per-fold metrics.
+    * `CLI` interface for training, testing, and visualizing results.
     * `live_plot.py` script to visualize Loss and Accuracy curves.
     * `best_model.py` script to visualize the results of the best model of each fold.
 
@@ -26,7 +27,7 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 
 Network parameters are defined in a CSV file passed to the `--grid` argument. 
 
-**Format (`dataset/<dataset>/grid.csv`):**
+**Format (`grids/grid.csv`):**
 
 | Item | Description | Options |
 | :--- | :--- | :--- |
@@ -115,6 +116,7 @@ Selection never compares training losses: they are not on the same scale across 
 | `--dump` | Flag to serialize and save the best trained models to `.bin` files | `false` |
 | `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
+| `--trials` | Number of trials for averaging results with different initializations| `1` |
 | `--epochs` | Maximum number of training epochs per fold | `800` |
 | `--patience` | Fraction of epochs to wait for improvement before early stopping | `0.125` |
 | `--warmup` | Fraction of epochs to warmup the learning rate | `0.1` |

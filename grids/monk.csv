@@ -1,5 +1,5 @@
 # =============================================================================
-# MONK-1/2/3 -- binary target, 17 one-hot inputs.
+# MONK-1/2/3 -- binary target, 17 one-hot inputs, 1 output.
 # =============================================================================
 id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
 

@@ -1,0 +1,38 @@
+# =============================================================================
+# MONK-1/2/3 -- binary target, 17 one-hot inputs, 1 output.
+# =============================================================================
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+
+# --- A. Learning Rate --------------------------------------------------------
+0,8,tanh,sigmoid,glorot,sgd,bce,0,0.10,1e-2,0.85,0.9
+1,8,tanh,sigmoid,glorot,sgd,bce,0,0.20,1e-2,0.85,0.9
+2,8,tanh,sigmoid,glorot,sgd,bce,0,0.35,1e-2,0.85,0.9
+3,8,tanh,sigmoid,glorot,sgd,bce,0,0.50,1e-2,0.85,0.9
+
+# --- B. Weight Decay --------------------------------------------------------
+4,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,0,0.85,0.9
+5,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+6,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,3e-2,0.85,0.9
+7,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+8,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,2e-1,0.85,0.9
+
+# --- C. Hidden Activation ---------------------------------------------------
+9,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+10,8,tanh,sigmoid,glorot,sgd,mse,0,0.5,1e-2,0.85,0.9
+11,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+12,8,sigmoid,sigmoid,glorot,sgd,mse,0,0.5,1e-2,0.85,0.9
+
+# --- D. Capacity ------------------------------------------------------------
+13,4,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+14,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+15,16,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+
+# --- E. Momentum ------------------------------------------------------------
+16,8,sigmoid,sigmoid,glorot,sgd,bce,0,1.67,1e-2,0.5,0.9
+17,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.50,1e-2,0.85,0.9
+18,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.167,1e-2,0.95,0.9
+
+# --- F. Weight Decay --------------------------------------------------------
+19,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+20,8,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,2e-1,0.85,0.9
+21,8,sigmoid,sigmoid,glorot,sgd,mse,0,0.5,1e-1,0.85,0.9
