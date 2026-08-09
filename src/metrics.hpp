@@ -40,15 +40,6 @@ OUT inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {
 
     return static_cast<Scalar>(correct_predictions) / num_samples;
 }
-
-// Measure for classification tasks with confidence
-OUT inline Scalar brier(const Matrix& target, const Matrix& prediction) {
-    if (target.cols() == 0) {
-        return 0.0;
-    }
-    // Mean over samples of the squared distance between the predicted probability and the target
-    return (prediction - target).array().square().colwise().sum().mean();
-}
 } // namespace Measure
 
 // Every metric measured at each step of training
@@ -57,7 +48,6 @@ struct Metrics {
     Scalar mee = 0;
     Scalar error = 0;
     Scalar accuracy = 0;
-    Scalar brier = 0;
     // Number of samples that contributed to this metric
     Scalar weight = 0;
 
@@ -70,7 +60,6 @@ struct Metrics {
             .mee = LossFunctions::mee(target, prediction) * n,
             .error = error * n,
             .accuracy = (track_accuracy ? Measure::accuracy(target, prediction) : Scalar(0)) * n,
-            .brier = (track_accuracy ? Measure::brier(target, prediction) : Scalar(0)) * n,
             .weight = weighted ? n : Scalar(1)};
     }
 
@@ -79,7 +68,6 @@ struct Metrics {
         mee += other.mee;
         error += other.error;
         accuracy += other.accuracy;
-        brier += other.brier;
         weight += other.weight;
     }
 
@@ -90,7 +78,6 @@ struct Metrics {
             mee /= weight;
             error /= weight;
             accuracy /= weight;
-            brier /= weight;
         }
         weight = 1;
     }

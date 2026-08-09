@@ -6,12 +6,21 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.animation import FuncAnimation
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button, RadioButtons
 
 FOLDER = f"artifacts/{sys.argv[1] if len(sys.argv) > 1 else 'model'}"
 INNER = re.compile(r"^outer(\d+)_inner_m(\d+)\.csv$")
 OUTER = re.compile(r"^outer(\d+)_m(\d+)\.csv$")
-METRICS = ["train_error", "test_error", "train_mse", "test_mse", "train_acc", "test_acc"]
+METRICS = ["train_error", "test_error", "train_mse", "test_mse",
+           "train_mee", "test_mee", "train_acc", "test_acc"]
+
+VIEWS = {
+    "Error": ("error", "Error", (0, None), "{:.3f}", "upper right"),
+    "MSE": ("mse", "MSE", (0, None), "{:.3f}", "upper right"),
+    "MEE": ("mee", "MEE", (0, None), "{:.3f}", "upper right"),
+    "Accuracy": ("acc", "Accuracy (%)", (None, 101), "{:.1f}%", "lower right"),
+}
+CLASSIFICATION_ONLY = {"Accuracy"}
 
 TRAIN_COLOR = "purple"
 VALID_COLOR = "orange"
@@ -59,24 +68,28 @@ class Runs:
 
 class Viewer:
     def __init__(self):
-        self.fig = plt.figure(figsize=(16, 7))
-        grid = self.fig.add_gridspec(1, 2, left=0.055, right=0.99, bottom=0.16, top=0.91, wspace=0.14)
-        self.ax_error = self.fig.add_subplot(grid[0, 0])
-        self.ax_acc = self.fig.add_subplot(grid[0, 1], sharex=self.ax_error)
+        self.fig = plt.figure(figsize=(12, 7))
+        self.ax = self.fig.add_axes([0.09, 0.16, 0.885, 0.75])
         self.outers, self.models, self.selected = [], {}, {}
         self.outer_i, self.model_i, self.log_scale = 0, 0, False
+        self.view, self.classification, self.syncing = "Error", True, False
 
         def button(x, label, action, **kw):
-            b = Button(plt.axes([x, 0.04, 0.1, 0.05]), label, **kw)
+            b = Button(plt.axes([x, 0.04, 0.11, 0.05]), label, **kw)
             b.on_clicked(action)
             return b
 
-        self.prev_fold = button(0.15, "< Prev Fold", self.step(outer=-1))
-        self.next_fold = button(0.26, "Next Fold >", self.step(outer=1))
-        self.goto_best = button(0.45, "Best Model", self.jump_to_best, color="gold", hovercolor="yellow")
-        self.prev_model = button(0.64, "< Prev Model", self.step(model=-1))
-        self.next_model = button(0.75, "Next Model >", self.step(model=1))
-        self.toggle = button(0.885, "Log Error", self.flip_scale)
+        self.prev_fold = button(0.16, "< Prev Fold", self.step(outer=-1))
+        self.next_fold = button(0.28, "Next Fold >", self.step(outer=1))
+        self.goto_best = button(0.435, "Best Model", self.jump_to_best, color="gold", hovercolor="yellow")
+        self.prev_model = button(0.60, "< Prev Model", self.step(model=-1))
+        self.next_model = button(0.72, "Next Model >", self.step(model=1))
+        self.toggle = button(0.875, "Log Scale", self.flip_scale)
+
+        radio_ax = plt.axes([0.008, 0.028, 0.115, 0.115], frameon=False)
+        radio_ax.set_facecolor("none")
+        self.radio = RadioButtons(radio_ax, list(VIEWS), active=list(VIEWS).index(self.view))
+        self.radio.on_clicked(self.pick_view)
 
     def step(self, outer=0, model=0):
         def action(_):
@@ -98,6 +111,21 @@ class Viewer:
         self.log_scale = not self.log_scale
         self.refresh()
 
+    def select_view(self, name):
+        self.syncing = True
+        self.view = name
+        self.radio.set_active(list(VIEWS).index(name))
+        self.syncing = False
+
+    def pick_view(self, label):
+        if self.syncing:
+            return
+        if not self.classification and label in CLASSIFICATION_ONLY:
+            self.select_view(self.view)
+            return
+        self.view = label
+        self.refresh()
+
     def scan(self):
         found, selected = {}, {}
         for path in glob.glob(os.path.join(FOLDER, "*.csv")):
@@ -114,6 +142,14 @@ class Viewer:
         self.models = {o: sorted(m) for o, m in found.items()}
         self.selected = selected
 
+    def detect_task(self, frames):
+        self.classification = any(f[c].abs().max() > 0 for f in frames for c in ("train_acc", "test_acc"))
+        if not self.classification and self.view in CLASSIFICATION_ONLY:
+            self.select_view("MEE")
+        for text in self.radio.labels:
+            greyed = not self.classification and text.get_text() in CLASSIFICATION_ONLY
+            text.set_alpha(0.3 if greyed else 1.0)
+
     def enable_buttons(self, models):
         for btn, on in [(self.prev_fold, self.outer_i > 0),
                         (self.next_fold, self.outer_i < len(self.outers) - 1),
@@ -122,30 +158,30 @@ class Viewer:
                         (self.goto_best, self.outers[self.outer_i] in self.selected)]:
             btn.set_active(on)
             btn.label.set_alpha(1.0 if on else 0.3)
-        self.toggle.label.set_text("Linear Error" if self.log_scale else "Log Error")
+        self.toggle.label.set_text("Linear Scale" if self.log_scale else "Log Scale")
 
     def style(self, title):
+        _, ylabel, (bottom, top), _, loc = VIEWS[self.view]
         self.fig.suptitle(title, fontsize=13, fontweight="bold")
-        self.ax_error.set_title("Error (log scale)" if self.log_scale else "Error", fontsize=11)
+        self.ax.set_title(f"{self.view} (log scale)" if self.log_scale else self.view, fontsize=11)
         if self.log_scale:
-            self.ax_error.set_yscale("log", nonpositive="mask")
-            self.ax_error.autoscale(axis="y")
+            self.ax.set_yscale("log", nonpositive="mask")
+            self.ax.autoscale(axis="y")
         else:
-            self.ax_error.set_yscale("linear")
-            self.ax_error.set_ylim(bottom=0)
-        self.ax_acc.set_title("Accuracy", fontsize=11)
-        self.ax_acc.set_ylim(top=101)
-        for ax, ylabel, loc in [(self.ax_error, "Error", "upper right"), (self.ax_acc, "Accuracy (%)", "lower right")]:
-            ax.grid(True, which="both", linestyle="--", alpha=0.7)
-            ax.set_ylabel(ylabel)
-            ax.set_xlabel("Epoch")
-            if ax.get_legend_handles_labels()[0]:
-                ax.legend(loc=loc)
+            self.ax.set_yscale("linear")
+            if bottom is not None:
+                self.ax.set_ylim(bottom=bottom)
+            if top is not None:
+                self.ax.set_ylim(top=top)
+        self.ax.grid(True, which="both", linestyle="--", alpha=0.7)
+        self.ax.set_ylabel(ylabel)
+        self.ax.set_xlabel("Epoch")
+        if self.ax.get_legend_handles_labels()[0]:
+            self.ax.legend(loc=loc)
 
     def refresh(self, _=None):
         self.scan()
-        self.ax_error.clear()
-        self.ax_acc.clear()
+        self.ax.clear()
         if not self.outers:
             self.style("Waiting for data...")
             return
@@ -159,27 +195,25 @@ class Viewer:
 
         inner_df = load(os.path.join(FOLDER, f"outer{outer}_inner_m{model}.csv"))
         outer_df = load(os.path.join(FOLDER, f"outer{outer}_m{model}.csv"))
+        self.detect_task([f for f in (inner_df, outer_df) if f is not None])
+        key, _, _, fmt, _ = VIEWS[self.view]
+
         header = f"Outer Fold: {self.outer_i + 1}/{len(self.outers)}  |  Model: {model}"
         title = header
 
         if inner_df is not None:
             runs = Runs(inner_df, retrain=False)
-            runs.draw(self.ax_error, "train_mse", TRAIN_COLOR, "Training Error", dashed=True)
-            runs.draw(self.ax_error, "test_mse", VALID_COLOR, "Validation Error",
-                      mark=None if outer_df is not None else "{:.3f}")
-            runs.draw(self.ax_acc, "train_acc", TRAIN_COLOR, "Training Accuracy", dashed=True)
-            runs.draw(self.ax_acc, "test_acc", VALID_COLOR, "Validation Accuracy",
-                      mark=None if outer_df is not None else "{:.1f}%")
+            runs.draw(self.ax, f"train_{key}", TRAIN_COLOR, f"Training {self.view}", dashed=True)
+            runs.draw(self.ax, f"test_{key}", VALID_COLOR, f"Validation {self.view}",
+                      mark=None if outer_df is not None else fmt)
             spread = f"{runs.folds} Folds" + (f" x {runs.trials} Trials" if runs.trials > 1 else "")
             title = f"Grid Search ({spread}):  {header}"
 
         if outer_df is not None:
             runs = Runs(outer_df, retrain=True)
             if inner_df is None:
-                runs.draw(self.ax_error, "train_mse", TRAIN_COLOR, "Train Error", dashed=True)
-                runs.draw(self.ax_acc, "train_acc", TRAIN_COLOR, "Train Accuracy", dashed=True)
-            runs.draw(self.ax_error, "test_mse", TEST_COLOR, "Test Error", mark="{:.3f}")
-            runs.draw(self.ax_acc, "test_acc", TEST_COLOR, "Test Accuracy", mark="{:.1f}%")
+                runs.draw(self.ax, f"train_{key}", TRAIN_COLOR, f"Train {self.view}", dashed=True)
+            runs.draw(self.ax, f"test_{key}", TEST_COLOR, f"Test {self.view}", mark=fmt)
             trials = f" ({runs.trials} Trials)" if runs.trials > 1 else ""
             title = f"Best Model Evaluation{trials}:  {header}"
 

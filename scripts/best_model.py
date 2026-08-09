@@ -11,44 +11,49 @@ FOLDER = f"artifacts/{NAME}"
 OUTER = re.compile(r"^outer(\d+)_m(\d+)\.csv$")
 
 
-def summarize(path):
+def summarize(path, metric):
     df = pd.read_csv(path)
     picks = [run.loc[run["train_error"].idxmin()] for _, run in df.groupby("trial")]
-    acc = pd.Series([p["test_acc"] for p in picks])
-    return acc.mean(), acc.std(ddof=1) if len(acc) > 1 else 0.0, len(acc)
+    values = pd.Series([p[metric] for p in picks])
+    return values.mean(), values.std(ddof=1) if len(values) > 1 else 0.0, len(values)
 
+
+paths = sorted(p for p in glob.glob(os.path.join(FOLDER, "outer*_m*.csv")) if OUTER.match(os.path.basename(p)))
+if not paths:
+    sys.exit(f"No retrained model logs found in {FOLDER}")
+
+probe = pd.read_csv(paths[0])
+classification = probe["test_acc"].abs().max() > 0
+metric, label, higher_is_better = ("test_acc", "Test Accuracy (%)", True) if classification else ("test_mee", "Test MEE", False)
 
 rows = []
-for path in sorted(glob.glob(os.path.join(FOLDER, "outer*_m*.csv"))):
+for path in paths:
     match = OUTER.match(os.path.basename(path))
-    if not match:
-        continue
-    mean, sd, trials = summarize(path)
+    mean, sd, trials = summarize(path, metric)
     rows.append({"fold": int(match.group(1)), "model": int(match.group(2)),
-                 "acc": mean, "sd": sd, "trials": trials})
-
-if not rows:
-    sys.exit(f"No retrained model logs found in {FOLDER}")
+                 "value": mean, "sd": sd, "trials": trials})
 
 results = pd.DataFrame(rows).sort_values("fold")
 labels = [f"Fold {f}" for f in results["fold"]]
 
 plt.figure(figsize=(10, 6))
-bars = plt.bar(labels, results["acc"], yerr=results["sd"], capsize=6,
+bars = plt.bar(labels, results["value"], yerr=results["sd"], capsize=6,
                color="#4C72B0", edgecolor="black", linewidth=1.2, alpha=0.85)
 
-for bar, model, acc, sd in zip(bars, results["model"], results["acc"], results["sd"]):
-    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + sd + 2,
-             f"Model {model}\n{acc:.1f}% ± {sd:.1f}", ha="center", va="bottom",
-             fontweight="bold", fontsize=10)
+fmt = "{:.1f}%" if classification else "{:.3f}"
+for bar, model, value, sd in zip(bars, results["model"], results["value"], results["sd"]):
+    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + sd, f"Model {model}\n" + fmt.format(value),
+             ha="center", va="bottom", fontweight="bold", fontsize=10)
 
-average = results["acc"].mean()
+average = results["value"].mean()
 plt.axhline(average, color="#C44E52", linestyle="--", linewidth=2.5,
-            label=f"Average: {average:.2f}%")
+            label=("Average: " + fmt).format(average))
 
-plt.ylim(0, 115)
-plt.ylabel("Test Accuracy (%)", fontsize=12)
-plt.title(f"{NAME.upper()} Performance  ({results['trials'].max()} trials per fold)",
+headroom = 1.18 * (results["value"] + results["sd"]).max()
+plt.ylim(0, 115 if classification else headroom)
+plt.ylabel(label, fontsize=12)
+direction = "higher is better" if higher_is_better else "lower is better"
+plt.title(f"{NAME.upper()} Performance  ({results['trials'].max()} trials per fold, {direction})",
           fontsize=14, fontweight="bold")
 plt.grid(axis="y", linestyle="--", alpha=0.7)
 if len(results) > 1:

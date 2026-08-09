@@ -201,7 +201,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
                 throw std::runtime_error("Failed to open log file: " + log_filename);
             }
             if (is_first_run) {
-                log_file << "fold,trial,epoch,train_error,test_error,train_mse,test_mse,train_acc,test_acc,train_brier,test_brier\n";
+                log_file << "fold,trial,epoch,train_error,test_error,train_mse,test_mse,train_mee,test_mee,train_acc,test_acc\n";
             }
         }
         // Sync the logged epoch with the available metrics
@@ -217,10 +217,10 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
                      << holdout.error << ","
                      << train.mse << ","
                      << holdout.mse << ","
+                     << train.mee << ","
+                     << holdout.mee << ","
                      << train.accuracy * 100.0 << ","
-                     << holdout.accuracy * 100.0 << ","
-                     << train.brier << ","
-                     << holdout.brier << "\n";
+                     << holdout.accuracy * 100.0 << "\n";
             logged_epoch++;
         }
         log_file.flush();

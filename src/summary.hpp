@@ -46,17 +46,25 @@ struct RunSummary {
             std::println("  • (no runs recorded)");
             return;
         }
+        // A single run has no spread to speak of, so "± 0.000" would only read as measured agreement
+        const auto figure = [this](const char* label, Scalar Metrics::* field, int decimals = 3, Scalar factor = 1, const char* unit = "") {
+            const Stats stat = get(field);
+            if (runs.size() > 1) {
+                std::println("  • {}: {:.{}f}{} ± {:.{}f}{}", label, stat.mean * factor, decimals, unit, stat.std * factor, decimals, unit);
+            } else {
+                std::println("  • {}: {:.{}f}{}", label, stat.mean * factor, decimals, unit);
+            }
+        };
+
         if (track_accuracy) {
-            const Stats acc = get(&Metrics::accuracy);
-            std::println("  • Accuracy: {:.2f}% ± {:.2f}%", acc.mean * 100.0, acc.std * 100.0);
+            figure("Accuracy", &Metrics::accuracy, 2, 100.0, "%");
+            figure("Error", &Metrics::error);
+            figure("MSE", &Metrics::mse);
+        } else {
+            figure("MSE", &Metrics::mse);
+            figure("MEE", &Metrics::mee);
         }
-        const Stats err = get(&Metrics::error);
-        const Stats mse = get(&Metrics::mse);
-        std::println("  • Error: {:.3f} ± {:.3f} - MSE: {:.3f} ± {:.3f} ({} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
-        if (!track_accuracy) {
-            const Stats mee = get(&Metrics::mee);
-            std::println("  • MEE: {:.3f} ± {:.3f}", mee.mean, mee.std);
-        }
+        std::println("  ({} {})", runs.size(), runs.size() == 1 ? "run" : "runs");
     }
 };
 

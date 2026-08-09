@@ -8,8 +8,8 @@
 #include <vector>
 
 // Holds the score of a model
-// For classification the main metric is the error rate (1 - accuracy), and the tie-breaking metric is the Brier score
-// For regression, both metrics are the error.
+// For classification the main metric is the error rate (1 - accuracy), and the tie-breaking metric is the MSE
+// For regression, both metrics are mse.
 struct SelectionScore {
     Scalar main_metric = INF;
     Scalar tie_metric = INF;
@@ -41,7 +41,7 @@ struct SelectionScore {
 
         // Define a lambda to compute the score of a single epoch based on the run's task type
         auto epoch_score = [&run](const Metrics& e) {
-            return run.track_accuracy() ? SelectionScore{Scalar(1) - e.accuracy, e.brier} : SelectionScore{e.error, e.error};
+            return run.track_accuracy() ? SelectionScore{Scalar(1) - e.accuracy, e.mse} : SelectionScore{e.error, e.error};
         };
 
         const size_t window_size = std::min(static_cast<size_t>(SELECTION_WINDOW), epochs.size());

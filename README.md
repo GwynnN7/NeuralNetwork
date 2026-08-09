@@ -5,7 +5,7 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 ## Features
 
 * **Dynamic Architecture**: Network structure and hyperparameters configurable via a `Grid Search` CSV file.
-* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout`, selecting on error rate (Brier score as tie-break) for classification and on loss for regression.
+* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout`, selecting on error rate (`MSE` as tie-break) for classification and on loss for regression.
 * **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
 * **Loss Functions**: `MSE` (Mean Squared Error), `BCE` (Binary Cross-Entropy) and `CCE` (Categorical Cross-Entropy).
 * **Architecture Features**:
@@ -102,7 +102,7 @@ activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 
 ### Model selection metric
 
-Selection never compares training losses: they are not on the same scale across loss functions. Classification is ranked on **error rate** (1 − accuracy, the task objective) with the **Brier score** as tie-break (continuous and confidence-aware). Regression ranks on loss, which is always `MSE` and so already comparable. Both components are fixed metrics computed on every model's predictions, independent of what it was trained with.
+Selection never compares training losses: they are not on the same scale across loss functions. Classification is ranked on **error rate** (1 − accuracy, the task objective) with **`MSE`** as tie-break. Regression ranks on loss, which is always `MSE` and so already comparable. Both components are fixed metrics computed on every model's predictions, independent of what it was trained with.
 
 
 ## CLI Options
