@@ -4,8 +4,9 @@
 #include "types.hpp"
 
 #include <cmath>
-#include <numeric>
+#include <functional>
 #include <print>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -19,28 +20,29 @@ struct Stats {
 struct RunSummary {
     std::vector<Metrics> runs;
 
-    bool empty() const { return runs.empty(); }
-    size_t size() const { return runs.size(); }
+    QUERY bool empty() const noexcept { return runs.empty(); }
+    QUERY size_t size() const noexcept { return runs.size(); }
 
     void add_trial(const Metrics& run) {
         runs.push_back(run);
     }
 
-    Stats get(Scalar Metrics::* field) const {
-        if (runs.empty()) {
+    QUERY Stats get(Scalar Metrics::* field) const {
+        if (empty()) {
             return {};
         }
-        const Scalar n = static_cast<Scalar>(runs.size());
-        const Scalar mean = std::accumulate(runs.begin(), runs.end(), Scalar(0), [field](Scalar acc, const Metrics& metric) { return acc + metric.*field; }) / n;
-        if (runs.size() < 2) {
+        const Scalar n = static_cast<Scalar>(size());
+        const auto values = runs | std::views::transform([field](const Metrics& metric) { return metric.*field; });
+        const Scalar mean = std::ranges::fold_left(values, Scalar(0), std::plus{}) / n;
+        if (size() < 2) {
             return {mean, 0};
         }
-        const Scalar var = std::accumulate(runs.begin(), runs.end(), Scalar(0), [field, mean](Scalar acc, const Metrics& metric) { return acc + (metric.*field - mean) * (metric.*field - mean); });
+        const Scalar var = std::ranges::fold_left(values, Scalar(0), [mean](Scalar acc, Scalar value) { return acc + (value - mean) * (value - mean); });
         return {mean, std::sqrt(var / (n - 1))};
     }
 
     void print(bool track_accuracy) const {
-        if (runs.empty()) {
+        if (empty()) {
             std::println("  • (no runs recorded)");
             return;
         }

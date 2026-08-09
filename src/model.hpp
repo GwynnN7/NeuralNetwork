@@ -1,8 +1,8 @@
 #pragma once
 
-#include "dataset.hpp"
 #include "types.hpp"
 
+#include <expected>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -28,12 +28,14 @@ struct Model {
     TaskType task = TaskType::REGRESSION;
 
     void print() const;
-    static std::vector<Model> load_grid_search(const std::string& filename);
+    QUERY static std::vector<Model> load_grid_search(const std::string& filename);
 };
 
-class Network; // Forward declaration to avoid circular dependency
+// Forward declarations
+struct Dataset;
+class Network;
 
 namespace Serializer {
 void dump_model(const std::filesystem::path& file, const Model& model, const Network& network);
-std::unique_ptr<Network> load_model(const std::filesystem::path& file, const Dataset& dataset);
+QUERY std::expected<std::unique_ptr<Network>, std::string> load_model(const std::filesystem::path& file, const Dataset& dataset);
 } // namespace Serializer

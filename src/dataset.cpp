@@ -7,7 +7,6 @@
 #include <format>
 #include <fstream>
 #include <istream>
-#include <numeric>
 #include <print>
 #include <stdexcept>
 #include <utility>
@@ -174,7 +173,7 @@ const std::vector<int> feature_hot_sizes = {3, 3, 2, 3, 4, 2}; // Sizes of the o
 
 // Load MONK dataset from file
 Matrix load_monk(const std::string& filename, Scalar dataset_ratio) {
-    const int one_hot_width = std::accumulate(feature_hot_sizes.begin(), feature_hot_sizes.end(), 0);
+    const int one_hot_width = std::ranges::fold_left(feature_hot_sizes, 0, std::plus{});
     const int out_cols = MONK_NUM_LABELS + one_hot_width;
 
     const std::vector<CsvRow> rows = load_csv(filename, ' ');
@@ -213,8 +212,8 @@ Matrix load_monk(const std::string& filename, Scalar dataset_ratio) {
 
 void Dataset::print_info() const {
     std::println("\nDataset Info:");
-    std::println("{:<25}{}", " • Type:", Maps::dataset_to_str.at(type));
-    std::println("{:<25}{}", " • Task:", Maps::task_to_str.at(task));
+    std::println("{:<25}{}", " • Type:", Lookup::name_of(Lookup::datasets, type));
+    std::println("{:<25}{}", " • Task:", Lookup::name_of(Lookup::tasks, task));
     std::println("{:<25}{}", " • Samples:", num_samples);
     std::println("{:<25}{}", " • Features:", num_features);
     std::println("{:<25}{}", " • Classes:", num_classes);
@@ -243,10 +242,10 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
     case DatasetType::MONK3:
     case DatasetType::MONK3_HOT: {
         // Extract the dataset number from the enum name and search for the corresponding MONK dataset file
-        const std::string& monk_name = Maps::dataset_to_str.at(dataset_type);
+        const std::string_view monk_name = Lookup::name_of(Lookup::datasets, dataset_type);
         const size_t digit_pos = monk_name.find_first_of("0123456789");
         if (digit_pos == std::string::npos) {
-            throw std::invalid_argument("MONK dataset name has no problem number: " + monk_name);
+            throw std::invalid_argument(std::format("MONK dataset name has no problem number: {}", monk_name));
         }
         const char monk_dataset_number = monk_name[digit_pos];
         Matrix monk_train = Loader::MONK::load_monk(std::format("dataset/monk/monks-{}.train", monk_dataset_number), dataset_ratio).transpose();

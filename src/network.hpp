@@ -1,6 +1,5 @@
 #pragma once
 
-#include "datasplit.hpp"
 #include "layer.hpp"
 #include "metrics.hpp"
 #include "model.hpp"
@@ -8,6 +7,10 @@
 
 #include <memory>
 #include <vector>
+
+// Forward declarations
+struct Dataset;
+struct DataSplit;
 
 // Context for a training run
 struct TrainContext {
@@ -27,8 +30,7 @@ struct TrainContext {
 class Network {
   private:
     std::vector<std::unique_ptr<Layer>> layers;
-    LossFunction loss_func;
-    LossDerivative loss_derivative;
+    LossPair loss_pair;
 
     void setLossFunction(LossType lossType);
     void addLayer(std::unique_ptr<Layer> layer);
@@ -49,8 +51,8 @@ class Network {
 
     Model model;
 
-    Matrix predict(const Matrix& input) const;
+    QUERY Matrix predict(const Matrix& input) const;
     RunCurves train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx);
 
-    std::vector<const DenseLayer*> getDenseLayers() const;
+    QUERY std::vector<const DenseLayer*> getDenseLayers() const;
 };

@@ -61,7 +61,7 @@ inline Matrix softmax_derivative(const Matrix&) {
 }
 
 // Used to skip the derivative in backward pass when it would do nothing
-inline bool has_identity_derivative(ActivationType activation) {
+constexpr bool has_identity_derivative(ActivationType activation) noexcept {
     return activation == ActivationType::LINEAR;
 }
 } // namespace ActivationFunctions
@@ -104,21 +104,34 @@ inline Matrix cce_derivative(const Matrix& target, const Matrix& prediction) {
 }
 
 // True when the loss derivative already simplifies the output activation's derivative
-inline bool includes_output_derivative(LossType loss) {
+constexpr bool includes_output_derivative(LossType loss) noexcept {
     return loss == LossType::BCE || loss == LossType::CCE;
 }
 } // namespace LossFunctions
 
-namespace Maps {
-const std::map<ActivationType, std::pair<ActivationFunction, ActivationFunction>> activation_map = {
+// Lookup tables for activation and loss functions
+namespace Lookup {
+inline constexpr std::array<std::pair<ActivationType, ActivationPair>, 5> activation_functions{{
     {ActivationType::SIGMOID, {ActivationFunctions::sigmoid, ActivationFunctions::sigmoid_derivative}},
     {ActivationType::RELU, {ActivationFunctions::relu, ActivationFunctions::relu_derivative}},
     {ActivationType::TANH, {ActivationFunctions::tanh_activation, ActivationFunctions::tanh_derivative}},
     {ActivationType::LINEAR, {ActivationFunctions::linear, ActivationFunctions::linear_derivative}},
-    {ActivationType::SOFTMAX, {ActivationFunctions::softmax, ActivationFunctions::softmax_derivative}}};
+    {ActivationType::SOFTMAX, {ActivationFunctions::softmax, ActivationFunctions::softmax_derivative}},
+}};
 
-const std::map<LossType, std::pair<LossFunction, LossDerivative>> loss_map = {
+inline constexpr std::array<std::pair<LossType, LossPair>, 3> loss_functions{{
     {LossType::MSE, {LossFunctions::mse, LossFunctions::mse_derivative}},
     {LossType::BCE, {LossFunctions::bce, LossFunctions::bce_derivative}},
-    {LossType::CCE, {LossFunctions::cce, LossFunctions::cce_derivative}}};
-} // namespace Maps
+    {LossType::CCE, {LossFunctions::cce, LossFunctions::cce_derivative}},
+}};
+
+constexpr std::optional<ActivationPair> activation_for(ActivationType type) noexcept {
+    const auto entry = std::ranges::find(activation_functions, type, &std::pair<ActivationType, ActivationPair>::first);
+    return entry != activation_functions.end() ? std::optional(entry->second) : std::nullopt;
+}
+
+constexpr std::optional<LossPair> loss_for(LossType type) noexcept {
+    const auto entry = std::ranges::find(loss_functions, type, &std::pair<LossType, LossPair>::first);
+    return entry != loss_functions.end() ? std::optional(entry->second) : std::nullopt;
+}
+} // namespace Lookup

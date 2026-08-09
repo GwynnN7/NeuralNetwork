@@ -27,5 +27,5 @@ struct Dataset {
     }
 
     void print_info() const;
-    static Dataset load(DatasetType type, Scalar dataset_ratio);
+    QUERY static Dataset load(DatasetType type, Scalar dataset_ratio);
 };

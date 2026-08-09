@@ -5,6 +5,7 @@
 #include <charconv>
 #include <csignal>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -45,7 +46,7 @@ inline void set_split_seed(unsigned int seed) {
 }
 
 // Get the class index for a given sample from the labels
-inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
+QUERY inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
     if (labels.rows() == 1) { // Binary classification
         return labels(0, sample_index) >= Scalar(0.5) ? 1 : 0;
     } else { // Multi-class classification
@@ -56,7 +57,7 @@ inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index)
 }
 
 // Trim leading and trailing whitespace from a string
-inline std::string trim(const std::string& s) {
+QUERY inline std::string trim(const std::string& s) {
     const auto begin = s.find_first_not_of(" \t\r\n");
     if (begin == std::string::npos) {
         return {};
@@ -67,35 +68,29 @@ inline std::string trim(const std::string& s) {
 
 // Parse a whole string as a number of type T
 template <typename T>
-T parse_number(const std::string& s) {
+QUERY inline std::optional<T> parse_number(const std::string& s) noexcept {
     T value{};
     const char* last = s.data() + s.size();
     const auto [ptr, err] = std::from_chars(s.data(), last, value);
     // If the error isn't none or the pointer didn't reach the end of the string
     if (err != std::errc{} || ptr != last) {
-        throw std::runtime_error("'" + s + "' is not a valid number");
+        return std::nullopt;
     }
     return value;
 }
 
 // Check if the whole string is a number ("-1" and "1e-3" count, "data_1" does not)
-inline bool is_number(const std::string& s) {
-    try {
-        parse_number<double>(s);
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
+QUERY inline bool is_number(const std::string& s) {
+    return parse_number<double>(s).has_value();
 }
 
 // Parse a cell, reporting the file and line it came from, and the field name if available
 template <typename T>
-T parse_cell(const std::string& cell, const std::string& filename, int line, const std::string& field = "") {
-    try {
-        return parse_number<T>(cell);
-    } catch (const std::exception&) {
-        throw std::runtime_error(filename + " line " + std::to_string(line) + ": '" + cell + "' is not a valid number" + (field.empty() ? "" : " for " + field));
+QUERY T parse_cell(const std::string& cell, const std::string& filename, int line, const std::string& field = "") {
+    if (const std::optional<T> value = parse_number<T>(cell)) {
+        return *value;
     }
+    throw std::runtime_error(filename + " line " + std::to_string(line) + ": '" + cell + "' is not a valid number" + (field.empty() ? "" : " for " + field));
 }
 
 // Structure to hold a row of CSV with its line number
@@ -105,7 +100,7 @@ struct CsvRow {
 };
 
 // Load a CSV file into a vector of CsvRow, skipping comments and empty lines
-inline std::vector<CsvRow> load_csv(const std::string& filename, char delimiter = ',', bool skip_header = false) {
+QUERY inline std::vector<CsvRow> load_csv(const std::string& filename, char delimiter = ',', bool skip_header = false) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Could not open file: " + filename);

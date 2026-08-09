@@ -5,7 +5,6 @@
 #include "utility.hpp"
 
 #include <cmath>
-#include <functional>
 #include <memory>
 #include <random>
 
@@ -92,28 +91,29 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, S
 
 // ActivationLayer constructor that initializes the activation function and its derivative based on the specified ActivationType
 ActivationLayer::ActivationLayer(ActivationType activation_type, bool derivative_in_loss) {
-    try {
-        activation = Maps::activation_map.at(activation_type).first;
-        activation_derivative = Maps::activation_map.at(activation_type).second;
-    } catch (const std::out_of_range&) {
+    const std::optional<ActivationPair> functions = Lookup::activation_for(activation_type);
+    if (!functions) {
         throw std::invalid_argument("Unsupported activation function type");
     }
-    skip_derivative = derivative_in_loss || ActivationFunctions::has_identity_derivative(activation_type);
+    activation.function = functions->function;
+    // Left null when the derivative would do nothing or is already folded into the loss
+    const bool skip_derivative = derivative_in_loss || ActivationFunctions::has_identity_derivative(activation_type);
+    activation.derivative = skip_derivative ? nullptr : functions->derivative;
 }
 
 // Forward pass through the ActivationLayer, applying the activation function to the input matrix
 Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
-    if (training && !skip_derivative) {
+    if (training && activation.derivative) {
         X = input_matrix; // Only stored when backward pass will actually use it to calculate the derivative
     }
-    return activation(input_matrix); // Call the activation function on the input matrix
+    return activation.function(input_matrix); // Call the activation function on the input matrix
 }
 
 // Backward pass through the ActivationLayer, calculating the gradient with respect to the input
 Matrix ActivationLayer::backward(const Matrix& output_gradient, const Model&, Scalar, bool) {
-    if (skip_derivative) {
+    if (!activation.derivative) {
         return output_gradient; // Multiplying by this derivative would do nothing or fail
     }
-    Matrix derivative = activation_derivative(X);    // Calculate the derivative of the activation function with respect to the input
+    Matrix derivative = activation.derivative(X);    // Calculate the derivative of the activation function with respect to the input
     return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
 }

@@ -1,13 +1,13 @@
 #include "network.hpp"
 
 #include "dataset.hpp"
+#include "datasplit.hpp"
 #include "functions.hpp"
 #include "types.hpp"
 #include "utility.hpp"
 
 #include <cmath>
 #include <fstream>
-#include <functional>
 #include <memory>
 #include <print>
 #include <string>
@@ -60,12 +60,11 @@ void Network::buildLayers(const Model& model, int num_features, int num_classes,
 
 // Utility function to set the loss function and its derivative based on the specified LossType
 void Network::setLossFunction(LossType lossType) {
-    try {
-        loss_func = Maps::loss_map.at(lossType).first;
-        loss_derivative = Maps::loss_map.at(lossType).second;
-    } catch (const std::out_of_range&) {
+    const std::optional<LossPair> functions = Lookup::loss_for(lossType);
+    if (!functions) {
         throw std::invalid_argument("Unsupported loss function type");
     }
+    loss_pair = *functions;
 }
 
 // Reject invalid configurations of the network
@@ -262,7 +261,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
             const Scalar batch_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
             // Start the backward pass to update weights and biases based on the output loss gradient
-            backward(loss_derivative(batch_labels, batch_prediction), batch_fraction);
+            backward(loss_pair.derivative(batch_labels, batch_prediction), batch_fraction);
         }
         result.training.append_epochs(batch_epoch);
         result.training.normalize_epoch();

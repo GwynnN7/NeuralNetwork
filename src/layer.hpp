@@ -1,6 +1,5 @@
 #pragma once
 
-#include "model.hpp"
 #include "optimizer.hpp"
 #include "types.hpp"
 
@@ -20,16 +19,18 @@ class Layer {
     virtual void restore() {}
 };
 
-class DenseLayer : public Layer {
+class DenseLayer final : public Layer {
   private:
     Matrix W;
     Vector b;
     std::unique_ptr<Optimizer> optimizer;
 
-    // Variables for early stopping behavior
-    Matrix best_W;
-    Vector best_b;
-    bool has_snapshot = false;
+    // Parameters of the best epoch
+    struct Snapshot {
+        Matrix weights;
+        Vector biases;
+    };
+    std::optional<Snapshot> best;
 
     // Set the optimizer of the network based on the specified OptimizerType
     void setOptimizer(OptimizerType optType) {
@@ -55,29 +56,21 @@ class DenseLayer : public Layer {
     Matrix forward(const Matrix& input_matrix, bool training) override;
     Matrix backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) override;
 
-    void snapshot() override {
-        best_W = W;
-        best_b = b;
-        has_snapshot = true;
-    }
+    void snapshot() override { best = Snapshot{W, b}; }
     void restore() override {
-        if (has_snapshot) {
-            W = best_W;
-            b = best_b;
+        if (best) {
+            W = best->weights;
+            b = best->biases;
         }
     }
 
-    const Matrix& getWeights() const { return W; }
-    const Vector& getBiases() const { return b; }
+    const Matrix& getWeights() const noexcept { return W; }
+    const Vector& getBiases() const noexcept { return b; }
 };
 
-class ActivationLayer : public Layer {
+class ActivationLayer final : public Layer {
   private:
-    ActivationFunction activation;
-    ActivationFunction activation_derivative;
-
-    // True when the derivative is either handled by the loss or would do nothing
-    bool skip_derivative;
+    ActivationPair activation;
 
   public:
     explicit ActivationLayer(ActivationType activation_type, bool derivative_in_loss = false);

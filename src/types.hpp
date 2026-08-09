@@ -1,24 +1,42 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <functional>
+#include <algorithm>
+#include <array>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 
 // Use the NN_DOUBLE_PRECISION CMake option for double precision
 #ifndef SCALAR_TYPE
 #define SCALAR_TYPE float
 #endif
 
-// Define types alias for Scalar and commonly used Matrix, Vector and function types
+// Define a macro for marking functions as [[nodiscard]]
+#define QUERY [[nodiscard]]
+
+// Define types for Scalar and commonly used Matrix and Vector
 using Scalar = SCALAR_TYPE;
 using Matrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
 using Vector = Eigen::Vector<Scalar, Eigen::Dynamic>;
 
-using LossFunction = std::function<Scalar(const Matrix&, const Matrix&)>;
-using LossDerivative = std::function<Matrix(const Matrix&, const Matrix&)>;
-using ActivationFunction = std::function<Matrix(const Matrix&)>;
+// Define types for Activation and Loss functions
+using LossFunction = Scalar (*)(const Matrix&, const Matrix&);
+using LossDerivative = Matrix (*)(const Matrix&, const Matrix&);
+using ActivationFunction = Matrix (*)(const Matrix&);
+
+struct ActivationPair {
+    ActivationFunction function = nullptr;
+    ActivationFunction derivative = nullptr;
+};
+
+struct LossPair {
+    LossFunction function = nullptr;
+    LossDerivative derivative = nullptr;
+};
 
 // Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
@@ -83,40 +101,59 @@ enum class DatasetType { XOR,
                          MONK3_HOT,
                          MNIST };
 
-namespace Maps {
-const std::map<ActivationType, std::string> activation_to_str = {
-    {ActivationType::RELU, "ReLU"},
-    {ActivationType::SIGMOID, "Sigmoid"},
-    {ActivationType::TANH, "Tanh"},
-    {ActivationType::LINEAR, "Linear"},
-    {ActivationType::SOFTMAX, "Softmax"},
-};
+// Lookup tables for the enums above
+namespace Lookup {
+// Define a template for a name table that maps enum values to string views
+template <typename T, std::size_t N>
+using NameTable = std::array<std::pair<T, std::string_view>, N>;
 
-const std::map<LossType, std::string> loss_to_str = {
-    {LossType::MSE, "Mean Squared Error"},
-    {LossType::BCE, "Binary Cross-Entropy"},
-    {LossType::CCE, "Categorical Cross-Entropy"},
-};
+// Text from enum value
+template <typename T, std::size_t N>
+constexpr std::string_view name_of(const NameTable<T, N>& table, T value) {
+    const auto entry = std::ranges::find(table, value, &std::pair<T, std::string_view>::first);
+    return entry != table.end() ? entry->second : "Unknown";
+}
 
-const std::map<TaskType, std::string> task_to_str = {
+// Enum value from text
+template <typename T, std::size_t N>
+constexpr std::optional<T> value_of(const NameTable<T, N>& table, std::string_view name) {
+    const auto entry = std::ranges::find(table, name, &std::pair<T, std::string_view>::second);
+    return entry != table.end() ? std::optional<T>(entry->first) : std::nullopt;
+}
+
+inline constexpr NameTable<ActivationType, 5> activations{{
+    {ActivationType::RELU, "relu"},
+    {ActivationType::SIGMOID, "sigmoid"},
+    {ActivationType::TANH, "tanh"},
+    {ActivationType::LINEAR, "linear"},
+    {ActivationType::SOFTMAX, "softmax"},
+}};
+
+inline constexpr NameTable<OptimizerType, 3> optimizers{{
+    {OptimizerType::SGD, "sgd"},
+    {OptimizerType::ADAM, "adam"},
+    {OptimizerType::RMSPROP, "rmsprop"},
+}};
+
+inline constexpr NameTable<LossType, 3> losses{{
+    {LossType::MSE, "mse"},
+    {LossType::BCE, "bce"},
+    {LossType::CCE, "cce"},
+}};
+
+inline constexpr NameTable<InitType, 4> inits{{
+    {InitType::RANDOM, "random"},
+    {InitType::LECUN, "lecun"},
+    {InitType::GLOROT, "glorot"},
+    {InitType::HE, "he"},
+}};
+
+inline constexpr NameTable<TaskType, 2> tasks{{
     {TaskType::REGRESSION, "Regression"},
     {TaskType::CLASSIFICATION, "Classification"},
-};
+}};
 
-const std::map<InitType, std::string> init_to_str = {
-    {InitType::RANDOM, "Random"},
-    {InitType::LECUN, "LeCun"},
-    {InitType::GLOROT, "Glorot"},
-    {InitType::HE, "He"},
-};
-
-const std::map<OptimizerType, std::string> optimizer_to_str = {
-    {OptimizerType::SGD, "SGD"},
-    {OptimizerType::ADAM, "Adam"},
-    {OptimizerType::RMSPROP, "RMSProp"},
-};
-
-const std::map<DatasetType, std::string> dataset_to_str = {
+inline constexpr NameTable<DatasetType, 9> datasets{{
     {DatasetType::XOR, "XOR"},
     {DatasetType::XOR_HOT, "XOR_HOT"},
     {DatasetType::MONK1, "MONK1"},
@@ -126,40 +163,44 @@ const std::map<DatasetType, std::string> dataset_to_str = {
     {DatasetType::MONK3, "MONK3"},
     {DatasetType::MONK3_HOT, "MONK3_HOT"},
     {DatasetType::MNIST, "MNIST"},
-};
+}};
 
-const std::map<std::string, DatasetType> str_to_dataset{
+inline constexpr NameTable<ActivationType, 5> activation_labels{{
+    {ActivationType::RELU, "ReLU"},
+    {ActivationType::SIGMOID, "Sigmoid"},
+    {ActivationType::TANH, "Tanh"},
+    {ActivationType::LINEAR, "Linear"},
+    {ActivationType::SOFTMAX, "Softmax"},
+}};
+
+inline constexpr NameTable<OptimizerType, 3> optimizer_labels{{
+    {OptimizerType::SGD, "SGD"},
+    {OptimizerType::ADAM, "Adam"},
+    {OptimizerType::RMSPROP, "RMSProp"},
+}};
+
+inline constexpr NameTable<LossType, 3> loss_labels{{
+    {LossType::MSE, "Mean Squared Error"},
+    {LossType::BCE, "Binary Cross-Entropy"},
+    {LossType::CCE, "Categorical Cross-Entropy"},
+}};
+
+inline constexpr NameTable<InitType, 4> init_labels{{
+    {InitType::RANDOM, "Random"},
+    {InitType::LECUN, "LeCun"},
+    {InitType::GLOROT, "Glorot"},
+    {InitType::HE, "He"},
+}};
+
+inline const std::map<std::string, DatasetType> str_to_dataset{
     {"xor", DatasetType::XOR},
     {"xor_hot", DatasetType::XOR_HOT},
-    {"MONK1", DatasetType::MONK1},
-    {"MONK1_hot", DatasetType::MONK1_HOT},
-    {"MONK2", DatasetType::MONK2},
-    {"MONK2_hot", DatasetType::MONK2_HOT},
-    {"MONK3", DatasetType::MONK3},
-    {"MONK3_hot", DatasetType::MONK3_HOT},
+    {"monk1", DatasetType::MONK1},
+    {"monk1_hot", DatasetType::MONK1_HOT},
+    {"monk2", DatasetType::MONK2},
+    {"monk2_hot", DatasetType::MONK2_HOT},
+    {"monk3", DatasetType::MONK3},
+    {"monk3_hot", DatasetType::MONK3_HOT},
     {"mnist", DatasetType::MNIST},
 };
-
-const std::map<std::string, ActivationType> str_to_activation{
-    {"sigmoid", ActivationType::SIGMOID},
-    {"relu", ActivationType::RELU},
-    {"tanh", ActivationType::TANH},
-    {"softmax", ActivationType::SOFTMAX},
-    {"linear", ActivationType::LINEAR}};
-
-const std::map<std::string, InitType> str_to_init{
-    {"random", InitType::RANDOM},
-    {"lecun", InitType::LECUN},
-    {"glorot", InitType::GLOROT},
-    {"he", InitType::HE}};
-
-const std::map<std::string, OptimizerType> str_to_optimizer{
-    {"sgd", OptimizerType::SGD},
-    {"adam", OptimizerType::ADAM},
-    {"rmsprop", OptimizerType::RMSPROP}};
-
-const std::map<std::string, LossType> str_to_loss{
-    {"mse", LossType::MSE},
-    {"bce", LossType::BCE},
-    {"cce", LossType::CCE}};
-} // namespace Maps
+} // namespace Lookup

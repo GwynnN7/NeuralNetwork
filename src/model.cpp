@@ -1,14 +1,13 @@
 #include "model.hpp"
 
+#include "dataset.hpp"
 #include "network.hpp"
 #include "types.hpp"
 #include "utility.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <fstream>
-#include <map>
 #include <print>
 #include <sstream>
 #include <stdexcept>
@@ -19,9 +18,9 @@
 std::vector<Model> Model::load_grid_search(const std::string& filename) {
     std::vector<Model> grid_search;
 
-    // Helper lambda function to convert a string to lowercase for case-insensitive mapping
+    // Helper lambda function to convert a string to lowercase
     auto to_lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+        std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::tolower(c); });
         return s;
     };
 
@@ -53,15 +52,18 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         }
 
         // Parse the remaining hyperparameters from the row
-        try {
-            model.hidden_activation = Maps::str_to_activation.at(to_lower(row[2]));
-            model.output_activation = Maps::str_to_activation.at(to_lower(row[3]));
-            model.init_type = Maps::str_to_init.at(to_lower(row[4]));
-            model.opt_type = Maps::str_to_optimizer.at(to_lower(row[5]));
-            model.loss_type = Maps::str_to_loss.at(to_lower(row[6]));
-        } catch (const std::out_of_range&) {
-            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": unknown activation, init, optimizer or loss name");
-        }
+        auto try_lookup = [&](const auto& table, int column, const char* tag) {
+            const auto value = Lookup::value_of(table, to_lower(row[column]));
+            if (!value) {
+                throw std::runtime_error("Grid row " + std::to_string(row_number) + ": unknown " + tag + " '" + row[column] + "'");
+            }
+            return *value;
+        };
+        model.hidden_activation = try_lookup(Lookup::activations, 2, "hidden activation");
+        model.output_activation = try_lookup(Lookup::activations, 3, "output activation");
+        model.init_type = try_lookup(Lookup::inits, 4, "weight init");
+        model.opt_type = try_lookup(Lookup::optimizers, 5, "optimizer");
+        model.loss_type = try_lookup(Lookup::losses, 6, "loss");
 
         model.batch_size = parse_cell<int>(row[7], filename, row_number, "batch");
         model.eta = parse_cell<Scalar>(row[8], filename, row_number, "eta");
@@ -117,12 +119,12 @@ void Model::print() const {
     if (opt_type == OptimizerType::ADAM) {
         std::println(" • {:<25}{}", "Adam Beta1:", beta1);
     }
-    std::println(" • {:<25}{}", "Hidden Activation:", Maps::activation_to_str.at(hidden_activation));
-    std::println(" • {:<25}{}", "Output Activation:", Maps::activation_to_str.at(output_activation));
-    std::println(" • {:<25}{}", "Weight Init:", Maps::init_to_str.at(init_type));
-    std::println(" • {:<25}{}", "Optimizer:", Maps::optimizer_to_str.at(opt_type));
-    std::println(" • {:<25}{}", "Loss Function:", Maps::loss_to_str.at(loss_type));
-    std::println(" • {:<25}{}", "Task Type:", Maps::task_to_str.at(task));
+    std::println(" • {:<25}{}", "Hidden Activation:", Lookup::name_of(Lookup::activations, hidden_activation));
+    std::println(" • {:<25}{}", "Output Activation:", Lookup::name_of(Lookup::activations, output_activation));
+    std::println(" • {:<25}{}", "Weight Init:", Lookup::name_of(Lookup::inits, init_type));
+    std::println(" • {:<25}{}", "Optimizer:", Lookup::name_of(Lookup::optimizers, opt_type));
+    std::println(" • {:<25}{}", "Loss Function:", Lookup::name_of(Lookup::losses, loss_type));
+    std::println(" • {:<25}{}", "Task Type:", Lookup::name_of(Lookup::tasks, task));
 }
 
 // Dump and Load everything needed to reconstruct the model
@@ -140,32 +142,32 @@ void write_data(std::ostream& out, const T& value) {
 
 // Read a value of type T from the input stream in binary format
 template <typename T>
-T read_data(std::istream& in, const char* action) {
+T read_data(std::istream& in, const char* tag) {
     static_assert(std::is_trivial_v<T>, "read_data can only be used with Plain Old Data types");
 
     T value{};
     in.read(reinterpret_cast<char*>(&value), sizeof(T));
     if (!in || in.gcount() != static_cast<std::streamsize>(sizeof(T))) {
-        throw std::runtime_error(std::string("Error reading ") + action);
+        throw std::runtime_error(std::string("Error reading ") + tag);
     }
     return value;
 }
 
 // Read a fixed number of bytes from the input stream into the destination buffer
-void read_array(std::istream& in, void* dest, std::size_t bytes, const char* action) {
+void read_array(std::istream& in, void* dest, std::size_t bytes, const char* tag) {
     static_assert(std::is_trivial_v<void*>, "read_array can only be used with Plain Old Data types");
 
     in.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(bytes));
     if (!in || in.gcount() != static_cast<std::streamsize>(bytes)) {
-        throw std::runtime_error(std::string("Error reading ") + action);
+        throw std::runtime_error(std::string("Error reading ") + tag);
     }
 }
 
 // Read a dimension (rows or columns) from the input stream
-std::int32_t read_dimension(std::istream& in, const char* action) {
-    const std::int32_t value = read_data<std::int32_t>(in, action);
+std::int32_t read_dimension(std::istream& in, const char* tag) {
+    const std::int32_t value = read_data<std::int32_t>(in, tag);
     if (value <= 0) {
-        throw std::runtime_error("Invalid model file: " + std::string(action) + " must be positive");
+        throw std::runtime_error("Invalid model file: " + std::string(tag) + " must be positive");
     }
     return value;
 }
@@ -217,30 +219,27 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
 }
 
 // Load a model and its weights/biases from a binary file
-std::unique_ptr<Network> load_model(const std::filesystem::path& file, const Dataset& dataset) {
+std::expected<std::unique_ptr<Network>, std::string> load_model(const std::filesystem::path& file, const Dataset& dataset) {
     std::ifstream dump_file(file, std::ios::binary);
     if (!dump_file.is_open()) {
-        std::println(stderr, "Failed to open {} for reading", file.string());
-        return nullptr;
+        return std::unexpected(std::format("could not open {}", file.string()));
     }
     std::println("\n- Loading model from: {}", file.string());
 
     try {
         if (read_data<std::uint32_t>(dump_file, "magic number") != MAGIC) {
-            std::println(stderr, "Invalid model file format");
-            return nullptr;
+            return std::unexpected("not a model file (bad magic number)");
         }
         const std::uint32_t scalar_size = read_data<std::uint32_t>(dump_file, "scalar size");
         if (scalar_size != sizeof(Scalar)) {
-            std::println(stderr, "Model file was written with {} byte scalars, this build uses {} byte", scalar_size, sizeof(Scalar));
-            return nullptr;
+            return std::unexpected(std::format("written with {}-byte scalars, this build uses {}-byte", scalar_size, sizeof(Scalar)));
         }
 
         // Helper lambda to read an enum value
-        auto read_enum = [&dump_file](const char* action, int max_value) {
-            const std::int32_t value = read_data<std::int32_t>(dump_file, action);
+        auto read_enum = [&dump_file](const char* tag, int max_value) {
+            const std::int32_t value = read_data<std::int32_t>(dump_file, tag);
             if (value < 0 || value > max_value) {
-                throw std::runtime_error(std::string("Invalid model reading ") + action);
+                throw std::runtime_error(std::string("Invalid model reading ") + tag);
             }
             return value;
         };
@@ -253,8 +252,7 @@ std::unique_ptr<Network> load_model(const std::filesystem::path& file, const Dat
         model.task = static_cast<TaskType>(read_enum("task", static_cast<int>(TaskType::CLASSIFICATION)));
 
         if (model.task != dataset.task) {
-            std::println(stderr, "Model was trained for a different task type than the provided dataset");
-            return nullptr;
+            return std::unexpected("trained for a different task type than the dataset");
         }
 
         const std::int32_t num_layers = read_data<std::int32_t>(dump_file, "layer count");
@@ -306,8 +304,7 @@ std::unique_ptr<Network> load_model(const std::filesystem::path& file, const Dat
 
         return std::make_unique<Network>(model, layers_weights, layers_biases, false);
     } catch (const std::exception& e) {
-        std::println(stderr, "Failed to load {}: {}", file.string(), e.what());
-        return nullptr;
+        return std::unexpected(e.what());
     }
 }
 } // namespace Serializer

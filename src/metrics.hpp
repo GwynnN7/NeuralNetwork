@@ -9,7 +9,7 @@
 // Measures computed from a set of targets and predictions
 namespace Measure {
 // Accuracy for binary and multi-class tasks
-inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {
+QUERY inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {
     int correct_predictions = 0;
     const int num_samples = static_cast<int>(target.cols());
     if (num_samples == 0) {
@@ -42,7 +42,7 @@ inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {
 }
 
 // Measure for classification tasks with confidence
-inline Scalar brier(const Matrix& target, const Matrix& prediction) {
+QUERY inline Scalar brier(const Matrix& target, const Matrix& prediction) {
     if (target.cols() == 0) {
         return 0.0;
     }
@@ -61,9 +61,9 @@ struct Metrics {
     Scalar weight = 0;
 
     // Compute the metrics for a given set of targets and predictions
-    static Metrics evaluate(const Matrix& target, const Matrix& prediction, LossType loss_type, bool track_accuracy, bool weighted = false) {
+    QUERY static Metrics evaluate(const Matrix& target, const Matrix& prediction, LossType loss_type, bool track_accuracy, bool weighted = false) {
         const Scalar n = weighted ? static_cast<Scalar>(target.cols()) : Scalar(1);
-        const Scalar error = Maps::loss_map.at(loss_type).first(target, prediction);
+        const Scalar error = Lookup::loss_for(loss_type)->function(target, prediction);
         return Metrics{
             .mse = (loss_type == LossType::MSE ? error : LossFunctions::mse(target, prediction)) * n,
             .error = error * n,
@@ -72,7 +72,7 @@ struct Metrics {
             .weight = weighted ? n : Scalar(1)};
     }
 
-    void operator+=(const Metrics& other) {
+    void operator+=(const Metrics& other) noexcept {
         mse += other.mse;
         error += other.error;
         accuracy += other.accuracy;
@@ -81,7 +81,7 @@ struct Metrics {
     }
 
     // Average the metrics over the number of samples that contributed
-    void normalize() {
+    void normalize() noexcept {
         if (weight != 0) {
             mse /= weight;
             error /= weight;
@@ -98,13 +98,13 @@ struct LearningCurve {
     // Set when training was interrupted by an inf/NaN error
     bool invalid = false;
 
-    bool empty() const { return epochs.empty(); }
-    size_t size() const { return epochs.size(); }
-    Scalar last_error() const { return epochs.back().error; }
+    QUERY bool empty() const noexcept { return epochs.empty(); }
+    QUERY size_t size() const noexcept { return epochs.size(); }
+    QUERY Scalar last_error() const noexcept { return epochs.back().error; }
 
     // Metrics of a single epoch, by default the last one
-    const Metrics& at(int epoch = -1) const {
-        return (epoch >= 0 && static_cast<size_t>(epoch) < epochs.size()) ? epochs[epoch] : epochs.back();
+    QUERY const Metrics& at(int epoch = -1) const noexcept {
+        return (epoch >= 0 && static_cast<size_t>(epoch) < size()) ? epochs[epoch] : epochs.back();
     }
 
     // Record an epoch
@@ -134,7 +134,6 @@ struct LearningCurve {
             epochs.back().normalize();
         }
     }
-
 };
 
 // The result of a single training run
@@ -145,7 +144,7 @@ struct RunCurves {
     // The epoch that was selected as the best by early stopping
     int best_epoch = 0;
 
-    RunCurves(TaskType task_type = TaskType::REGRESSION) : task(task_type) {};
+    explicit RunCurves(TaskType task_type = TaskType::REGRESSION) : task(task_type) {};
 
-    bool track_accuracy() const { return task == TaskType::CLASSIFICATION; }
+    QUERY bool track_accuracy() const noexcept { return task == TaskType::CLASSIFICATION; }
 };

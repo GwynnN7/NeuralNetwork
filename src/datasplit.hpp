@@ -15,6 +15,7 @@ struct DataSplit {
     }
 };
 
+// Forward declaration
 struct Args;
 struct Dataset;
 
@@ -23,16 +24,16 @@ class Splitter {
   public:
     Splitter(const Dataset& dataset, const Args& args) : dataset(dataset), args(args) {}
 
-    std::vector<DataSplit> get(int folds, const std::vector<int>* indices = nullptr) const;
-    DataSplit final_split() const;
+    QUERY std::vector<DataSplit> get(int folds, const std::vector<int>* indices = nullptr) const;
+    QUERY DataSplit final_split() const;
 
   private:
     const Dataset& dataset;
     const Args& args;
 
     // `use_default` to try using the dataset's default train/test splitting
-    DataSplit holdout_split(int num_samples, bool use_default) const;
-    std::vector<DataSplit> standard_split(int k, int num_samples) const;
-    std::vector<DataSplit> stratified_split(int k, const Matrix& labels) const;
-    std::vector<DataSplit> kfold(std::vector<int> indices, int k) const;
+    QUERY DataSplit holdout_split(int num_samples, bool use_default) const;
+    QUERY std::vector<DataSplit> standard_split(int k, int num_samples) const;
+    QUERY std::vector<DataSplit> stratified_split(int k, const Matrix& labels) const;
+    QUERY std::vector<DataSplit> kfold(std::vector<int> indices, int k) const;
 };

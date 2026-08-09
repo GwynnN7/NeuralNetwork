@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <format>
 #include <numeric>
+#include <ranges>
 #include <stdexcept>
 #include <vector>
 
@@ -20,7 +21,7 @@ DataSplit Splitter::holdout_split(int num_samples, bool use_default) const {
     }
 
     // Use the dataset's predefined number of training samples
-    const bool use_default_split = use_default && dataset.train_samples.has_value() && dataset.train_samples.value() > 0 && dataset.train_samples.value() < num_samples;
+    const bool use_default_split = use_default && dataset.train_samples && *dataset.train_samples > 0 && *dataset.train_samples < num_samples;
 
     // Create a vector of indices representing the samples
     std::vector<int> indices(num_samples);
@@ -32,7 +33,7 @@ DataSplit Splitter::holdout_split(int num_samples, bool use_default) const {
     }
 
     DataSplit holdout;
-    int train_size = use_default_split ? dataset.train_samples.value() : static_cast<int>(num_samples * args.train_ratio);
+    int train_size = use_default_split ? *dataset.train_samples : static_cast<int>(num_samples * args.train_ratio);
     // Avoid empty sets by clamping the train_size
     train_size = std::clamp(train_size, 1, num_samples - 1);
     // Assign the first 'train_size' samples to the training set and the rest to the test set
@@ -114,9 +115,8 @@ std::vector<DataSplit> Splitter::stratified_split(int k, const Matrix& labels) c
         if (static_cast<int>(indices.size()) < k) {
             throw std::invalid_argument(std::format("{} samples are too few for {} stratified folds", indices.size(), k));
         }
-        const std::vector<DataSplit> class_folds = kfold(indices, k);
-        for (size_t i = 0; i < class_folds.size(); ++i) {
-            folds[i].concat(class_folds[i]);
+        for (auto&& [fold, class_fold] : std::views::zip(folds, kfold(indices, k))) {
+            fold.concat(class_fold);
         }
     }
 

@@ -23,7 +23,7 @@ void train(const Dataset& dataset, const Args& args) {
 
     // Load the grid search parameters and assign the task type to the model based on the dataset
     std::vector<Model> grid_search = Model::load_grid_search(args.grid_file);
-    std::for_each(grid_search.begin(), grid_search.end(), [&dataset](Model& model) { model.task = dataset.task; });
+    std::ranges::for_each(grid_search, [&dataset](Model& model) { model.task = dataset.task; });
 
     // Initialize outer folds variables
     const std::vector<DataSplit> outer_folds = splitter.get(args.outer_folds);
@@ -177,11 +177,12 @@ void test(const Dataset& dataset, const Args& args) {
 
     // Load the best models trained and evaluate them
     for (const auto& file : models) {
-        std::unique_ptr<Network> network = Serializer::load_model(file, dataset);
-        if (network == nullptr) {
-            std::println(stderr, "Failed to load the model, skipping");
+        const std::expected<std::unique_ptr<Network>, std::string> loaded = Serializer::load_model(file, dataset);
+        if (!loaded) {
+            std::println(stderr, "Skipping {}: {}", file.filename().string(), loaded.error());
             continue;
         }
+        const std::unique_ptr<Network>& network = *loaded;
 
         // Evaluate the model
         const Matrix final_train_predictions = network->predict(train_features);
