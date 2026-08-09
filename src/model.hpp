@@ -1,5 +1,7 @@
 #pragma once
 
+#include "selection.hpp"
+#include "summary.hpp"
 #include "types.hpp"
 
 #include <expected>
@@ -26,6 +28,8 @@ struct Model {
 
     // Runtime parameters, not part of model selection
     TaskType task = TaskType::REGRESSION;
+    SelectionScore score;
+    SplitSummary summary;
 
     void print() const;
     OUT static std::vector<Model> load_grid_search(const std::string& filename);

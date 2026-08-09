@@ -2,6 +2,7 @@
 
 #include "dataset.hpp"
 #include "network.hpp"
+#include "normalizer.hpp"
 #include "types.hpp"
 #include "utility.hpp"
 
@@ -164,9 +165,9 @@ void read_array(std::istream& in, void* dest, std::size_t bytes, const char* tag
 }
 
 // Read a dimension (rows or columns) from the input stream
-std::int32_t read_dimension(std::istream& in, const char* tag) {
+std::int32_t read_dimension(std::istream& in, const char* tag, bool allow_zero = false) {
     const std::int32_t value = read_data<std::int32_t>(in, tag);
-    if (value <= 0) {
+    if (value < 0 || (value == 0 && !allow_zero)) {
         throw std::runtime_error("Invalid model file: " + std::string(tag) + " must be positive");
     }
     return value;
@@ -191,6 +192,17 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     write_data(dump_file, static_cast<std::int32_t>(model.loss_type));
     write_data(dump_file, static_cast<std::int32_t>(model.task));
 
+    const auto write_normalizer = [&dump_file](const Normalizer& normalizer) {
+        const auto size_opt = normalizer.size();
+        write_data(dump_file, static_cast<std::int32_t>(size_opt.value_or(std::make_pair(0, 0)).first));
+        if (size_opt) {
+            dump_file.write(reinterpret_cast<const char*>(normalizer.offsets()), size_opt->first * sizeof(Scalar));
+            dump_file.write(reinterpret_cast<const char*>(normalizer.scalings()), size_opt->second * sizeof(Scalar));
+        }
+    };
+    write_normalizer(network.featuresNormalizer());
+    write_normalizer(network.labelsNormalizer());
+
     const std::vector<const DenseLayer*> dense_layers = network.getDenseLayers();
 
     write_data(dump_file, static_cast<std::int32_t>(model.net_struct.size()));
@@ -201,15 +213,14 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     write_data(dump_file, static_cast<std::int32_t>(dense_layers.size()));
 
     for (const auto* layer : dense_layers) {
-        const Matrix& weights = layer->getWeights();
-        const Vector& biases = layer->getBiases();
+        const Parameters& layer_params = layer->getParameters();
 
-        write_data(dump_file, static_cast<std::int32_t>(weights.rows()));
-        write_data(dump_file, static_cast<std::int32_t>(weights.cols()));
-        dump_file.write(reinterpret_cast<const char*>(weights.data()), weights.size() * sizeof(Scalar));
+        write_data(dump_file, static_cast<std::int32_t>(layer_params.W.rows()));
+        write_data(dump_file, static_cast<std::int32_t>(layer_params.W.cols()));
+        dump_file.write(reinterpret_cast<const char*>(layer_params.W.data()), layer_params.W.size() * sizeof(Scalar));
 
-        write_data(dump_file, static_cast<std::int32_t>(biases.size()));
-        dump_file.write(reinterpret_cast<const char*>(biases.data()), biases.size() * sizeof(Scalar));
+        write_data(dump_file, static_cast<std::int32_t>(layer_params.b.size()));
+        dump_file.write(reinterpret_cast<const char*>(layer_params.b.data()), layer_params.b.size() * sizeof(Scalar));
     }
 
     dump_file.flush();
@@ -255,6 +266,20 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             return std::unexpected("trained for a different task type than the dataset");
         }
 
+        const auto read_normalizer = [&dump_file] {
+            Normalizer normalizer;
+            const std::int32_t size = read_dimension(dump_file, "normalizer size", true);
+            if (size > 0) {
+                Vector offsets(size), scales(size);
+                read_array(dump_file, offsets.data(), static_cast<std::size_t>(size) * sizeof(Scalar), "normalizer offsets");
+                read_array(dump_file, scales.data(), static_cast<std::size_t>(size) * sizeof(Scalar), "normalizer scales");
+                normalizer.load(std::move(offsets), std::move(scales));
+            }
+            return normalizer;
+        };
+        Normalizer input_norm = read_normalizer();
+        Normalizer target_norm = read_normalizer();
+
         const std::int32_t num_layers = read_data<std::int32_t>(dump_file, "layer count");
         if (num_layers <= 0) {
             throw std::runtime_error("Model file declares an implausible layer count: " + std::to_string(num_layers));
@@ -270,10 +295,8 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
         }
 
         // Read the weights and biases for each layer
-        std::vector<Matrix> layers_weights;
-        std::vector<Vector> layers_biases;
-        layers_weights.reserve(static_cast<size_t>(num_dense));
-        layers_biases.reserve(static_cast<size_t>(num_dense));
+        std::vector<Parameters> layers_params;
+        layers_params.reserve(static_cast<size_t>(num_dense));
 
         for (std::int32_t i = 0; i < num_dense; ++i) {
             const std::int32_t rows = read_dimension(dump_file, "weight row count");
@@ -290,19 +313,20 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             Vector biases(bias_size);
             read_array(dump_file, biases.data(), static_cast<std::size_t>(bias_size) * sizeof(Scalar), "biases");
 
-            layers_weights.push_back(std::move(weights));
-            layers_biases.push_back(std::move(biases));
+            layers_params.push_back(Parameters{std::move(weights), std::move(biases)});
         }
 
         // Check that the model's input/output dimensions match the dataset
-        if (static_cast<int>(layers_weights.front().cols()) != dataset.num_features) {
+        if (static_cast<int>(layers_params.front().W.cols()) != dataset.num_features) {
             throw std::runtime_error("Model input size does not match dataset feature count");
         }
-        if (static_cast<int>(layers_weights.back().rows()) != dataset.num_classes) {
+        if (static_cast<int>(layers_params.back().W.rows()) != dataset.num_classes) {
             throw std::runtime_error("Model output size does not match dataset class count");
         }
 
-        return std::make_unique<Network>(model, layers_weights, layers_biases, false);
+        auto network = std::make_unique<Network>(model, layers_params, false);
+        network->setNormalizers(std::move(input_norm), std::move(target_norm));
+        return network;
     } catch (const std::exception& e) {
         return std::unexpected(e.what());
     }

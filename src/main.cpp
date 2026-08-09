@@ -9,17 +9,19 @@
 #include "utility.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <numeric>
+#include <optional>
 #include <print>
 #include <vector>
 
 void train(const Dataset& dataset, const Args& args) {
-    // Prepare the main split for final evaluation and dumping of best models
     // Every split for this run comes from here, so the dataset and the options behind them stay visible
     const Splitter splitter{dataset, args};
-    const DataSplit final_split = splitter.final_split();
 
     // Load the grid search parameters and assign the task type to the model based on the dataset
     std::vector<Model> grid_search = Model::load_grid_search(args.grid_file);
@@ -40,9 +42,8 @@ void train(const Dataset& dataset, const Args& args) {
         std::vector<DataSplit> inner_folds = splitter.get(args.inner_folds, &outer_folds[i].train_indices);
         bool in_model_selection = grid_search.size() > 1;
 
-        // Variables to track the best model and its score across inner folds
-        size_t best_model_index = 0;
-        SelectionScore best_score;
+        // Variable to track the best model (or the only one) and its score
+        Model best_model = grid_search.front();
 
         // Inner loop for model selection, skipped when there is nothing to select
         for (size_t m = 0; in_model_selection && m < grid_search.size(); ++m) {
@@ -59,17 +60,15 @@ void train(const Dataset& dataset, const Args& args) {
 
                     Network network(grid_model, dataset.num_features, dataset.num_classes);
 
-                    const TrainContext ctx{
-                        .trial = t,
-                        .epochs = args.epochs,
-                        .patience = args.patience,
-                        .warmup = args.warmup,
-                        .model_id = grid_model.id,
-                        .outer_index = outer_index,
-                        .inner_index = static_cast<int>(j),
-                        .in_model_selection = true,
-                        .logging = true,
-                    };
+                    const TrainContext ctx = [&]() {
+                        TrainContext context = TrainContext::from_args(args);
+                        context.trial = t;
+                        context.model_id = grid_model.id;
+                        context.outer_index = outer_index;
+                        context.inner_index = static_cast<int>(j);
+                        context.in_model_selection = true;
+                        return context;
+                    }();
 
                     // Train the model on the current inner fold
                     const RunCurves run = network.train(dataset, inner_folds[j], ctx);
@@ -83,13 +82,14 @@ void train(const Dataset& dataset, const Args& args) {
             // Calculate the average score of the model across all inner folds and trials
             const SelectionScore average_score = SelectionScore::average_scores(model_scores);
             // Keep the model with the best final score
-            if (average_score.valid() && (m == 0 || !best_score.valid() || average_score < best_score)) {
-                best_model_index = m;
-                best_score = average_score;
+            if (average_score.valid() && (m == 0 || !best_model.score.valid() || average_score < best_model.score)) {
+                best_model = grid_model;
+                best_model.score = average_score;
+                best_model.summary = model_summary;
             }
         }
 
-        best_models.push_back(grid_search[best_model_index]);
+        best_models.push_back(best_model);
         if (in_model_selection) {
             std::println("\nRetraining the best model for Outer Fold {}: Model {}", outer_index, best_models[i].id);
         }
@@ -100,17 +100,15 @@ void train(const Dataset& dataset, const Args& args) {
             set_trial_seed(args.seed, t, -1);
 
             Network best_fold_network(best_models[i], dataset.num_features, dataset.num_classes);
-            const TrainContext ctx{
-                .trial = t,
-                .epochs = args.epochs,
-                .patience = args.patience,
-                .warmup = args.warmup,
-                .model_id = best_models[i].id,
-                .outer_index = outer_index,
-                .inner_index = -1,
-                .in_model_selection = false,
-                .logging = true,
-            };
+            const TrainContext ctx = [&]() {
+                TrainContext context = TrainContext::from_args(args);
+                context.trial = t;
+                context.model_id = best_models[i].id;
+                context.outer_index = outer_index;
+                context.inner_index = -1;
+                return context;
+            }();
+
             const RunCurves run = best_fold_network.train(dataset, outer_folds[i], ctx);
             assessment_summaries[i].add_trial(run);
         }
@@ -124,30 +122,75 @@ void train(const Dataset& dataset, const Args& args) {
         assessment_summaries[i].print(track_accuracy, "Test");
     }
 
-    // Dump the best models found with cross-validation, trained on the original train/test split (if applicable)
+    // Dump the best model
     if (args.dump) {
-        std::print("\n[Dumping Best Models]");
-        for (size_t i = 0; i < best_models.size(); ++i) {
-            set_trial_seed(args.seed, 0, -1);
+        std::print("\n[Dumping Final Model]");
+        set_trial_seed(args.seed, 0, -1);
 
-            Network final_network(best_models[i], dataset.num_features, dataset.num_classes);
-            const TrainContext ctx{
-                .epochs = args.epochs,
-                .patience = args.patience,
-                .warmup = args.warmup,
-                .model_id = best_models[i].id,
-                .outer_index = static_cast<int>(i),
-                .inner_index = -1,
-                .in_model_selection = false,
-                .logging = false,
-            };
-            final_network.train(dataset, final_split, ctx);
-            Serializer::dump_model(std::format("{}/outer{}.bin", MODEL_PATH, i), best_models[i], final_network);
+        const Model& final_model = best_models.front();
+        if (std::ranges::any_of(best_models, [&](const Model& m) { return m.id != final_model.id; })) {
+            std::println("\nOuter folds disagreed on the configuration; using the one from fold 0 (Model {})", final_model.id);
         }
+
+        DataSplit split;
+        const int training_samples = dataset.train_samples.value_or(dataset.num_samples);
+        split.train_indices.resize(training_samples);
+        std::iota(split.train_indices.begin(), split.train_indices.end(), 0);
+
+        const Stats target_error = final_model.summary.training.get(&Metrics::error);
+        switch (args.stopping_rule) {
+        case StoppingRule::ERROR_LEVEL:
+            if (target_error.mean > 0) {
+                std::println("\nStopping the final retrain at the validated training error level: {:.3f}", target_error.mean);
+                break;
+            }
+            // Fall through to convergence if there is no validated error
+            [[fallthrough]];
+        case StoppingRule::CONVERGENCE:
+            std::println("\nStopping the final retrain at convergence");
+            break;
+        }
+
+        Network final_network(final_model, dataset.num_features, dataset.num_classes);
+        const TrainContext ctx = [&]() {
+            TrainContext context = TrainContext::from_args(args);
+            context.model_id = final_model.id;
+            context.inner_index = -1;
+            context.target_error = target_error.mean;
+            context.logging = false;
+            return context;
+        }();
+
+        const RunCurves final_run = final_network.train(dataset, split, ctx);
+        Serializer::dump_model(std::format("{}/final.bin", MODEL_PATH), final_model, final_network);
     }
 }
 
-void test(const Dataset& dataset, const Args& args) {
+void write_blind_predictions(const Matrix& predictions, const DatasetType dataset_type) {
+    const std::filesystem::path file = std::format("{}/{}.csv", MODEL_PATH, Lookup::name_of(Lookup::datasets, dataset_type));
+    std::ofstream out(file);
+    if (!out.is_open()) {
+        throw std::runtime_error("Could not open " + file.string() + " for writing");
+    }
+    const auto now = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
+    out << "# \n";
+    out << "# " << Lookup::name_of(Lookup::datasets, dataset_type) << "\n";
+    out << "# " << std::format("{:%d %b %Y}", now) << "\n";
+    for (Eigen::Index p = 0; p < predictions.cols(); ++p) {
+        out << (p + 1);
+        for (Eigen::Index m = 0; m < predictions.rows(); ++m) {
+            out << "," << predictions(m, p);
+        }
+        out << "\n";
+    }
+    out.flush();
+    if (!out) {
+        throw std::runtime_error("Failed while writing " + file.string());
+    }
+    std::println("\n- Wrote {} predictions to {}", predictions.cols(), file.string());
+}
+
+void test(const Dataset& dataset, const Args&) {
     if (!std::filesystem::is_directory(MODEL_PATH)) {
         throw std::runtime_error("No artifact directory to load models from: " + MODEL_PATH);
     }
@@ -165,17 +208,27 @@ void test(const Dataset& dataset, const Args& args) {
         throw std::runtime_error("No .bin model files found in " + MODEL_PATH + " (run with --train --dump first)");
     }
 
-    // Get the same split the dumped models were trained on
-    const Splitter splitter{dataset, args};
-    const DataSplit final_split = splitter.final_split();
+    // Determine the features and labels to use for evaluation
+    const int training_samples = dataset.train_samples.value_or(dataset.num_samples);
+    const bool has_test_split = training_samples < dataset.num_samples;
+    const bool predict_blind = !has_test_split && dataset.blind_features.has_value();
 
-    // Extract training and testing features and labels for the split
-    const Matrix train_features = dataset.features(Eigen::placeholders::all, final_split.train_indices);
-    const Matrix train_labels = dataset.labels(Eigen::placeholders::all, final_split.train_indices);
-    const Matrix test_features = dataset.features(Eigen::placeholders::all, final_split.test_indices);
-    const Matrix test_labels = dataset.labels(Eigen::placeholders::all, final_split.test_indices);
+    std::vector<int> evaluation_indices;
+    if (has_test_split) {
+        evaluation_indices.resize(dataset.num_samples - training_samples);
+        std::iota(evaluation_indices.begin(), evaluation_indices.end(), training_samples);
+    } else if (!predict_blind) {
+        evaluation_indices.resize(dataset.num_samples);
+        std::iota(evaluation_indices.begin(), evaluation_indices.end(), 0);
+    }
 
-    // Load the best models trained and evaluate them
+    std::vector<int> training_indices(training_samples);
+    std::iota(training_indices.begin(), training_indices.end(), 0);
+    const Matrix train_features = dataset.features(Eigen::placeholders::all, training_indices);
+    const Matrix train_labels = dataset.labels(Eigen::placeholders::all, training_indices);
+    const Matrix test_features = dataset.features(Eigen::placeholders::all, evaluation_indices);
+    const Matrix test_labels = dataset.labels(Eigen::placeholders::all, evaluation_indices);
+
     for (const auto& file : models) {
         const std::expected<std::unique_ptr<Network>, std::string> loaded = Serializer::load_model(file, dataset);
         if (!loaded) {
@@ -184,18 +237,18 @@ void test(const Dataset& dataset, const Args& args) {
         }
         const std::unique_ptr<Network>& network = *loaded;
 
-        // Evaluate the model
-        const Matrix final_train_predictions = network->predict(train_features);
-        const Matrix final_test_predictions = network->predict(test_features);
+        if (predict_blind) {
+            write_blind_predictions(network->predict(*dataset.blind_features), dataset.type);
+            continue;
+        }
 
-        // A loaded model is evaluated once, so there is no curve and no spread to report here
         const bool track_accuracy = (network->model.task == TaskType::CLASSIFICATION);
         const LossType loss = network->model.loss_type;
 
         SplitSummary summary;
-        summary.add_trial(Metrics::evaluate(train_labels, final_train_predictions, loss, track_accuracy),
-                          Metrics::evaluate(test_labels, final_test_predictions, loss, track_accuracy));
-        summary.print(track_accuracy, "Test");
+        summary.add_trial(Metrics::evaluate(train_labels, network->predict(train_features), loss, track_accuracy),
+                          Metrics::evaluate(test_labels, network->predict(test_features), loss, track_accuracy));
+        summary.print(track_accuracy, has_test_split ? "Test" : "Dataset");
     }
 }
 

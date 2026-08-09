@@ -20,25 +20,25 @@ Network::Network(const Model& model) : model(model) {
 
 // Network constructor that calls the layers building function with the specified number of features and classes
 Network::Network(const Model& model, int num_features, int num_classes) : Network(model) {
-    buildLayers(model, num_features, num_classes, nullptr, nullptr, true);
+    buildLayers(model, num_features, num_classes, nullptr, true);
 }
 
 // Network constructor that calls the layers building function with the specified weights and biases for each layer
-Network::Network(const Model& model, const std::vector<Matrix>& weights, const std::vector<Vector>& biases, bool instantiate_optimizer) : Network(model) {
-    if (weights.size() != biases.size() || weights.size() != model.net_struct.size() + 1) {
-        throw std::invalid_argument("Mismatch between the number of weights, biases, and layers in the model");
+Network::Network(const Model& model, const std::vector<Parameters>& params, bool instantiate_optimizer) : Network(model) {
+    if (params.size() != model.net_struct.size() + 1) {
+        throw std::invalid_argument("Mismatch between the number of parameter sets and layers in the model");
     }
-    buildLayers(model, static_cast<int>(weights.front().cols()), static_cast<int>(weights.back().rows()), &weights, &biases, instantiate_optimizer);
+    buildLayers(model, static_cast<int>(params.front().W.cols()), static_cast<int>(params.back().W.rows()), &params, instantiate_optimizer);
 }
 
 // Function that builds each layer of the network, both loaded and initialized
-void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Matrix>* weights, const std::vector<Vector>* biases, bool instantiate_optimizer) {
+void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, bool instantiate_optimizer) {
     validateModel(model, num_features, num_classes);
 
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
         // Add a DenseLayer and an ActivationLayer for each layer in the network structure
-        if (weights != nullptr) {
-            addLayer(std::make_unique<DenseLayer>((*weights)[i], (*biases)[i], model.opt_type, instantiate_optimizer));
+        if (params != nullptr) {
+            addLayer(std::make_unique<DenseLayer>(params->at(i), model.opt_type, instantiate_optimizer));
         } else {
             const int input_features = (i == 0) ? num_features : model.net_struct[i - 1];
             addLayer(std::make_unique<DenseLayer>(input_features, model.net_struct[i], model.init_type, model.opt_type));
@@ -47,8 +47,8 @@ void Network::buildLayers(const Model& model, int num_features, int num_classes,
     }
 
     // Add the final output layer with the specified number of classes and output activation
-    if (weights != nullptr) {
-        addLayer(std::make_unique<DenseLayer>(weights->back(), biases->back(), model.opt_type, instantiate_optimizer));
+    if (params != nullptr) {
+        addLayer(std::make_unique<DenseLayer>(params->back(), model.opt_type, instantiate_optimizer));
     } else {
         addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
     }
@@ -114,29 +114,36 @@ std::vector<const DenseLayer*> Network::getDenseLayers() const {
 // Snapshot the current weights and biases of all layers in the network
 void Network::snapshotParameters() {
     for (auto& layer : layers) {
-        layer->snapshot();
+        layer->takeSnapshot();
     }
 }
 
 // Restore the weights and biases of all layers in the network to the last snapshot
 void Network::restoreParameters() {
     for (auto& layer : layers) {
-        layer->restore();
+        layer->restoreSnapshot();
     }
 }
 
-// Inference forward pass, does not record the input of each layer, since backward will not be called (can be made const)
+// Set the normalizers for input and target data
+void Network::setNormalizers(Normalizer input, Normalizer target) {
+    features_norm = std::move(input);
+    labels_norm = std::move(target);
+}
+
+// Inference forward pass, does not record the input of each layer, since backward will not be called
 Matrix Network::predict(const Matrix& input) const {
-    Matrix out = input;
+    Matrix out = features_norm.apply(input);
     for (const auto& layer : layers) {
         out = layer->forward(out, false);
     }
-    return out;
+    // Revert the normalization of the output to return predictions in the original scale
+    return labels_norm.revert(out);
 }
 
 // Training forward pass, records the input of each layer for use in the backward pass
 Matrix Network::forward(const Matrix& input) {
-    Matrix out = input;
+    Matrix out = features_norm.apply(input);
     for (auto& layer : layers) {
         out = layer->forward(out, true);
     }
@@ -164,13 +171,20 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
     // Validate the split
     const int input_size = static_cast<int>(indices.train_indices.size());
-    if (input_size == 0 || indices.test_indices.empty()) {
-        throw std::runtime_error("Split has an empty training or test set");
+    if (input_size == 0) {
+        throw std::runtime_error("Split has an empty training set");
     }
 
-    // Extract test features and labels from the dataset
-    Matrix test_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
-    Matrix test_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
+    // Extract features and labels from the dataset
+    auto train_features = dataset.features(Eigen::placeholders::all, indices.train_indices);
+    auto train_labels = dataset.labels(Eigen::placeholders::all, indices.train_indices);
+    auto test_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
+    auto test_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
+
+    // Fit the normalizers on the training data and apply them to both training and test sets
+    features_norm = Normalizer::fit(ctx.norm_type, train_features);
+    // Don't normalize the labels for classification tasks
+    labels_norm = model.task == TaskType::REGRESSION ? Normalizer::fit(ctx.norm_type, train_labels) : Normalizer{};
 
     // Calculate the number of batches
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;
@@ -222,8 +236,9 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     Scalar patience_error = 0.0;
     int epochs_without_improvement = 0;
     bool auto_early_stop_flag = false;
+    const bool use_error_level = ctx.stopping == StoppingRule::ERROR_LEVEL && !ctx.in_model_selection && ctx.target_error;
 
-    // Batch index buffer and local copy of the training indices to shuffle each epoch
+    // Batch index buffers
     std::vector<int> batch_indices;
     batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
@@ -253,15 +268,11 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             Matrix batch_features = dataset.features(Eigen::placeholders::all, batch_indices);
             Matrix batch_labels = dataset.labels(Eigen::placeholders::all, batch_indices);
 
-            // Forward pass to get predictions for the current batch
             Matrix batch_prediction = forward(batch_features);
-
-            // Calculate the loss and accuracy for the current batch and accumulate for the epoch
-            batch_epoch.add_batch(batch_labels, batch_prediction, model.loss_type, result.track_accuracy());
+            batch_epoch.add_batch(batch_labels, labels_norm.revert(batch_prediction), model.loss_type, result.track_accuracy());
 
             const Scalar batch_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
-            // Start the backward pass to update weights and biases based on the output loss gradient
-            backward(loss_pair.derivative(batch_labels, batch_prediction), batch_fraction);
+            backward(loss_pair.derivative(labels_norm.apply(batch_labels), batch_prediction), batch_fraction);
         }
         result.training.append_epochs(batch_epoch);
         result.training.normalize_epoch();
@@ -275,7 +286,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         }
 
         // Evaluate the model on the test set and calculate the loss and accuracy
-        const bool predict_test = (ctx.patience > 0 && ctx.in_model_selection) || ctx.logging;
+        const bool predict_test = ((ctx.patience > 0 && ctx.in_model_selection) || ctx.logging) && !indices.test_indices.empty();
         if (predict_test) {
             Matrix test_prediction = predict(test_features);
             result.holdout.append_epoch(test_labels, test_prediction, model.loss_type, result.track_accuracy());
@@ -283,8 +294,13 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
         // Early stopping logic based on the patience parameter
         // In model selection the holdout split is the validation set, so it is used to determine when to stop
-        // Outside model selection, the training error is used because the holdout split is the test set
-        if (ctx.patience > 0) {
+        // Outside model selection, either the training error or the validated best error is used because the holdout split is the test set
+        if (use_error_level) {
+            if (result.training.last_error() <= *ctx.target_error) {
+                result.best_epoch = i;
+                auto_early_stop_flag = true;
+            }
+        } else if (ctx.patience > 0) {
             Scalar current_error = ctx.in_model_selection ? result.holdout.last_error() : result.training.last_error();
             // If the current error is better than the best error so far (with tolerance), reset the patience counter and save the model parameters
             if (i == 0 || current_error < patience_error - std::abs(patience_error) * ES_TOLERANCE) {
@@ -317,7 +333,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     }
 
     // Roll back to the parameters of the best epoch
-    if (ctx.patience > 0) {
+    if (ctx.patience > 0 && !use_error_level) {
         restoreParameters();
     } else {
         // Without early stopping nothing was snapshotted, so the run ends on its final epoch
