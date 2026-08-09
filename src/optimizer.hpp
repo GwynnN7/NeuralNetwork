@@ -61,8 +61,8 @@ class RMSProp : public Optimizer {
 
     void update(Matrix& W, Vector& b, const Matrix& dW, const Vector& db, const Model& model, Scalar batch_fraction) override {
         // Update the moving average of squared gradients for weights and biases
-        v_W = (model.alpha * v_W) + (Scalar(1) - model.alpha) * dW.cwiseAbs2();
-        v_b = (model.alpha * v_b) + (Scalar(1) - model.alpha) * db.cwiseAbs2();
+        v_W = (model.alpha * v_W) + (Scalar(1) - model.alpha) * dW.cwiseSquare();
+        v_b = (model.alpha * v_b) + (Scalar(1) - model.alpha) * db.cwiseSquare();
 
         // Calculate the weight and bias updates using RMSProp algorithm
         d_W = -model.eta * dW.array() / (v_W.array().sqrt() + EPSILON);
@@ -100,8 +100,8 @@ class Adam : public Optimizer {
         m_b = (B1 * m_b) + (Scalar(1) - B1) * db;
 
         // Update the moving average of squared gradients for weights and biases
-        v_W = (B2 * v_W) + (Scalar(1) - B2) * dW.cwiseAbs2();
-        v_b = (B2 * v_b) + (Scalar(1) - B2) * db.cwiseAbs2();
+        v_W = (B2 * v_W) + (Scalar(1) - B2) * dW.cwiseSquare();
+        v_b = (B2 * v_b) + (Scalar(1) - B2) * db.cwiseSquare();
 
         // Bias correction
         t++;
