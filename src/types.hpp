@@ -16,7 +16,7 @@
 #endif
 
 // Define a macro for marking functions as [[nodiscard]]
-#define QUERY [[nodiscard]]
+#define OUT [[nodiscard]]
 
 // Define types for Scalar and commonly used Matrix and Vector
 using Scalar = SCALAR_TYPE;
@@ -79,6 +79,18 @@ enum class OptimizerType {
     ADAM
 };
 
+enum class StoppingRule {
+    CONVERGENCE,
+    ERROR_LEVEL
+};
+
+enum class NormalizationType {
+    NONE,
+    MIN_MAX,
+    ABS_MAX,
+    Z_SCORE
+};
+
 enum class LossType { MSE,
                       BCE,
                       CCE };
@@ -99,6 +111,7 @@ enum class DatasetType { XOR,
                          MONK2_HOT,
                          MONK3,
                          MONK3_HOT,
+                         MLCUP,
                          MNIST };
 
 // Lookup tables for the enums above
@@ -153,7 +166,7 @@ inline constexpr NameTable<TaskType, 2> tasks{{
     {TaskType::CLASSIFICATION, "Classification"},
 }};
 
-inline constexpr NameTable<DatasetType, 9> datasets{{
+inline constexpr NameTable<DatasetType, 10> datasets{{
     {DatasetType::XOR, "XOR"},
     {DatasetType::XOR_HOT, "XOR_HOT"},
     {DatasetType::MONK1, "MONK1"},
@@ -162,7 +175,20 @@ inline constexpr NameTable<DatasetType, 9> datasets{{
     {DatasetType::MONK2_HOT, "MONK2_HOT"},
     {DatasetType::MONK3, "MONK3"},
     {DatasetType::MONK3_HOT, "MONK3_HOT"},
+    {DatasetType::MLCUP, "MLCUP"},
     {DatasetType::MNIST, "MNIST"},
+}};
+
+inline constexpr NameTable<StoppingRule, 2> stopping_rules{{
+    {StoppingRule::CONVERGENCE, "convergence"},
+    {StoppingRule::ERROR_LEVEL, "error"},
+}};
+
+inline constexpr NameTable<NormalizationType, 4> normalizations{{
+    {NormalizationType::NONE, "none"},
+    {NormalizationType::MIN_MAX, "minmax"},
+    {NormalizationType::ABS_MAX, "max"},
+    {NormalizationType::Z_SCORE, "zscore"},
 }};
 
 inline constexpr NameTable<ActivationType, 5> activation_labels{{
@@ -201,6 +227,19 @@ inline const std::map<std::string, DatasetType> str_to_dataset{
     {"monk2_hot", DatasetType::MONK2_HOT},
     {"monk3", DatasetType::MONK3},
     {"monk3_hot", DatasetType::MONK3_HOT},
+    {"mlcup", DatasetType::MLCUP},
     {"mnist", DatasetType::MNIST},
+};
+
+inline const std::map<std::string, StoppingRule> str_to_stopping{
+    {"convergence", StoppingRule::CONVERGENCE},
+    {"level", StoppingRule::ERROR_LEVEL},
+};
+
+inline const std::map<std::string, NormalizationType> str_to_normalization{
+    {"none", NormalizationType::NONE},
+    {"minmax", NormalizationType::MIN_MAX},
+    {"max", NormalizationType::ABS_MAX},
+    {"zscore", NormalizationType::Z_SCORE},
 };
 } // namespace Lookup

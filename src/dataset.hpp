@@ -9,10 +9,14 @@ struct Dataset {
     TaskType task;
     Matrix features, labels;
     int num_samples, num_features, num_classes;
-    std::optional<int> train_samples; // Store the original number of training samples for datasets that have a predefined train/test split
 
-    Dataset(DatasetType type, TaskType task, Matrix features, Matrix labels, std::optional<int> train_samples = std::nullopt)
-        : type(type), task(task), features(std::move(features)), labels(std::move(labels)), train_samples(train_samples) {
+    // Original number of training samples for datasets that have a predefined train/test split
+    std::optional<int> train_samples;
+    // Unlabelled inputs for dataset that have a blind test set
+    std::optional<Matrix> blind_features;
+
+    Dataset(DatasetType type, TaskType task, Matrix features, Matrix labels, std::optional<int> train_samples = std::nullopt, std::optional<Matrix> blind_features = std::nullopt)
+        : type(type), task(task), features(std::move(features)), labels(std::move(labels)), train_samples(train_samples), blind_features(std::move(blind_features)) {
 
         num_samples = static_cast<int>(this->features.cols());
         num_features = static_cast<int>(this->features.rows());
@@ -27,5 +31,5 @@ struct Dataset {
     }
 
     void print_info() const;
-    QUERY static Dataset load(DatasetType type, Scalar dataset_ratio);
+    OUT static Dataset load(DatasetType type, Scalar dataset_ratio);
 };

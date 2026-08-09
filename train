@@ -21,6 +21,8 @@ WARMUP=0.1 # Fraction of epochs to warmup the learning rate
 INNER_K=5 # Number of folds for inner cross-validation
 OUTER_K=1 # Holdout to use predefined train/test split if available
 
+STOPPING="convergence" # Stopping rule for final retrain: convergence, best, last
+NORMALIZATION="minmax" # Normalization method: none, minmax, max, zscore
 DATASET_RATIO=1.0 # Fraction of the dataset to use
 TRAIN_RATIO=0.8 # Fallback for datasets that don't have a predefined train/test split
 SEED=42 # Random seed for reproducibility
@@ -58,7 +60,8 @@ $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --train --shuffle --seed $SEED --trials $TRIALS \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K \
-    --epochs $EPOCHS --patience $PATIENCE --warmup $WARMUP &
+    --epochs $EPOCHS --patience $PATIENCE --warmup $WARMUP \
+    --normalization $NORMALIZATION --stopping $STOPPING &
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &

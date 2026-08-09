@@ -38,8 +38,8 @@ Matrix to_matrix(const std::vector<Scalar>& flat, int rows, int cols) {
 // MNIST utility functions for reading data
 namespace MNIST {
 // MNIST file magic numbers
-constexpr int MNIST_IMAGE_MAGIC = 2051;
-constexpr int MNIST_LABEL_MAGIC = 2049;
+constexpr int IMAGE_MAGIC = 2051;
+constexpr int LABEL_MAGIC = 2049;
 
 // MNIST files are big-endian, need to swap on little-endian systems
 std::int32_t swap_endian(std::int32_t value) {
@@ -82,7 +82,7 @@ Matrix load_mnist_images(const std::string& path, Scalar dataset_ratio) {
     }
 
     // Read the magic number and validate it
-    if (MNIST::read_int(file, path, "magic number") != MNIST::MNIST_IMAGE_MAGIC) {
+    if (MNIST::read_int(file, path, "magic number") != MNIST::IMAGE_MAGIC) {
         throw std::runtime_error("Invalid MNIST image file: " + path);
     }
 
@@ -120,7 +120,7 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
     }
 
     // Read the magic number and validate it
-    if (MNIST::read_int(file, path, "magic number") != MNIST::MNIST_LABEL_MAGIC) {
+    if (MNIST::read_int(file, path, "magic number") != MNIST::LABEL_MAGIC) {
         throw std::runtime_error("Invalid MNIST label file: " + path);
     }
 
@@ -144,9 +144,10 @@ Matrix load_mnist_labels(const std::string& path, Scalar dataset_ratio) {
 } // namespace MNIST
 
 namespace XOR {
-constexpr int XOR_NUM_FEATURES = 2; // Number of features in the XOR dataset
-constexpr int XOR_NUM_LABELS = 1;   // Number of classes in the XOR dataset
-constexpr int XOR_NUM_COLS = XOR_NUM_FEATURES + XOR_NUM_LABELS;
+constexpr int NUM_FEATURES = 2; // Number of features in the XOR dataset
+constexpr int NUM_LABELS = 1;   // Number of labels in the XOR dataset
+constexpr int NUM_CLASSES = 2;  // Number of classes in the XOR dataset
+constexpr int XOR_NUM_COLS = NUM_FEATURES + NUM_LABELS;
 
 // Load XOR dataset from a CSV file: 2 feature columns followed by the label column
 Matrix load_xor(const std::string& filename) {
@@ -167,30 +168,31 @@ Matrix load_xor(const std::string& filename) {
 } // namespace XOR
 
 namespace MONK {
-constexpr int MONK_NUM_FEATURES = 6;                           // Number of categorical features in the MONK dataset
-constexpr int MONK_NUM_LABELS = 1;                             // Number of classes in the MONK dataset
+constexpr int NUM_FEATURES = 6;                                // Number of categorical features in the MONK dataset
+constexpr int NUM_LABELS = 1;                                  // Number of labels in the MONK dataset
+constexpr int NUM_CLASSES = 2;                                 // Number of classes in the MONK dataset
+constexpr int NUM_SKIP_COLS = 1;                               // Number of columns to skip in the MONK file (the ID column)
 const std::vector<int> feature_hot_sizes = {3, 3, 2, 3, 4, 2}; // Sizes of the one-hot encoded features for each categorical feature
 
 // Load MONK dataset from file
 Matrix load_monk(const std::string& filename, Scalar dataset_ratio) {
     const int one_hot_width = std::ranges::fold_left(feature_hot_sizes, 0, std::plus{});
-    const int out_cols = MONK_NUM_LABELS + one_hot_width;
+    const int out_cols = NUM_LABELS + one_hot_width;
 
     const std::vector<CsvRow> rows = load_csv(filename, ' ');
 
     std::vector<Scalar> flat;
     flat.reserve(rows.size() * out_cols);
     for (const CsvRow& row : rows) {
-        if (static_cast<int>(row.cells.size()) < MONK_NUM_LABELS + MONK_NUM_FEATURES) {
-            throw std::runtime_error(filename + " line " + std::to_string(row.line) + ": expected at least " +
-                                     std::to_string(MONK_NUM_LABELS + MONK_NUM_FEATURES) + " fields, found " + std::to_string(row.cells.size()));
+        if (static_cast<int>(row.cells.size()) != NUM_LABELS + NUM_FEATURES + NUM_SKIP_COLS) {
+            throw std::runtime_error("Wrong number of columns in MONK dataset file " + filename);
         }
 
         // Column 0 is the class label
         flat.push_back(parse_cell<Scalar>(row.cells[0], filename, row.line));
 
         // Columns 1-6 are the categorical features
-        for (int col = 0; col < MONK_NUM_FEATURES; ++col) {
+        for (int col = 0; col < NUM_FEATURES; ++col) {
             const int width = feature_hot_sizes[col];
             const int value = static_cast<int>(parse_cell<Scalar>(row.cells[col + 1], filename, row.line));
             if (value < 1 || value > width) {
@@ -208,6 +210,32 @@ Matrix load_monk(const std::string& filename, Scalar dataset_ratio) {
     return to_matrix(flat, total_rows, out_cols).topRows(kept_rows);
 }
 } // namespace MONK
+
+namespace MLCUP {
+constexpr int NUM_FEATURES = 12; // Number of features in the MLCUP dataset
+constexpr int NUM_LABELS = 4;    // Number of labels in the MLCUP dataset
+constexpr int NUM_SKIP_COLS = 1; // Number of columns to skip in the MLCUP file (the ID column)
+
+Matrix load_mlcup(const std::string& filename, int columns) {
+    const std::vector<CsvRow> rows = load_csv(filename);
+
+    std::vector<Scalar> flat;
+    flat.reserve(rows.size() * columns);
+    for (const CsvRow& row : rows) {
+        if (static_cast<int>(row.cells.size()) != columns + NUM_SKIP_COLS) {
+            throw std::runtime_error("Wrong number of columns in MLCUP dataset file " + filename);
+        }
+        for (const std::string& cell : row.cells) {
+            // The id column is the first column
+            if (&cell == &row.cells[0]) {
+                continue;
+            }
+            flat.push_back(parse_cell<Scalar>(cell, filename, row.line));
+        }
+    }
+    return to_matrix(flat, static_cast<int>(rows.size()), columns);
+}
+} // namespace MLCUP
 } // namespace Loader
 
 void Dataset::print_info() const {
@@ -229,8 +257,9 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix xor_data = Loader::XOR::load_xor("dataset/xor/xor.csv").transpose();
 
         // Split the data into features and labels
-        Matrix features = xor_data.topRows(xor_data.rows() - 1);
-        Matrix labels = dataset_type == DatasetType::XOR ? xor_data.bottomRows(1).eval() : Loader::one_hot_encode(xor_data.bottomRows(1), 2).transpose();
+        Matrix features = xor_data.topRows(xor_data.rows() - Loader::XOR::NUM_LABELS);
+        Matrix labels = dataset_type == DatasetType::XOR ? xor_data.bottomRows(Loader::XOR::NUM_LABELS).eval()
+                                                         : Loader::one_hot_encode(xor_data.bottomRows(Loader::XOR::NUM_LABELS), Loader::XOR::NUM_CLASSES).transpose();
 
         // Replicate the dataset to create a larger dataset for training and testing (task set to regression for XOR and classification for XOR_HOT)
         return Dataset{dataset_type, dataset_type == DatasetType::XOR ? TaskType::REGRESSION : TaskType::CLASSIFICATION, features.replicate(1, 100), labels.replicate(1, 100)};
@@ -253,9 +282,10 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         Matrix monk_data(monk_train.rows(), monk_train.cols() + monk_test.cols());
         monk_data << monk_train, monk_test;
 
-        Matrix features = monk_data.bottomRows(monk_data.rows() - 1);
+        Matrix features = monk_data.bottomRows(monk_data.rows() - Loader::MONK::NUM_LABELS);
         const bool is_hot_encoded = (dataset_type == DatasetType::MONK1_HOT || dataset_type == DatasetType::MONK2_HOT || dataset_type == DatasetType::MONK3_HOT);
-        Matrix labels = !is_hot_encoded ? monk_data.topRows(1).eval() : Loader::one_hot_encode(monk_data.topRows(1), 2).transpose();
+        Matrix labels = !is_hot_encoded ? monk_data.topRows(Loader::MONK::NUM_LABELS).eval()
+                                        : Loader::one_hot_encode(monk_data.topRows(Loader::MONK::NUM_LABELS), Loader::MONK::NUM_CLASSES).transpose();
 
         return Dataset{dataset_type, TaskType::CLASSIFICATION, std::move(features), std::move(labels), static_cast<int>(monk_train.cols())};
     };
@@ -275,6 +305,14 @@ Dataset Dataset::load(DatasetType dataset_type, Scalar dataset_ratio) {
         // Return the combined dataset with task set to classification for MNIST
         const int mnist_train_samples = static_cast<int>(train_features.cols());
         return Dataset{DatasetType::MNIST, TaskType::CLASSIFICATION, std::move(all_features), std::move(all_labels), mnist_train_samples};
+    };
+    case DatasetType::MLCUP: {
+        Matrix mlcup_data = Loader::MLCUP::load_mlcup("dataset/mlcup/ML-CUP25-TR.csv", Loader::MLCUP::NUM_FEATURES + Loader::MLCUP::NUM_LABELS).transpose();
+        Matrix features = mlcup_data.topRows(mlcup_data.rows() - Loader::MLCUP::NUM_LABELS);
+        Matrix labels = mlcup_data.bottomRows(Loader::MLCUP::NUM_LABELS);
+        // Load the blind test set, which has no labels
+        Matrix blind = Loader::MLCUP::load_mlcup("dataset/mlcup/ML-CUP25-TS.csv", Loader::MLCUP::NUM_FEATURES).transpose();
+        return Dataset{DatasetType::MLCUP, TaskType::REGRESSION, std::move(features), std::move(labels), std::nullopt, std::move(blind)};
     };
     default: {
         throw std::invalid_argument("Unsupported dataset type");

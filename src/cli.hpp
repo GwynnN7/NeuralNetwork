@@ -7,9 +7,11 @@ struct Args {
     int epochs;
     Scalar patience;
     Scalar warmup;
+    StoppingRule stopping_rule;
 
     // Dataset parameters
     DatasetType dataset_type;
+    NormalizationType normalization_type;
     Scalar train_ratio;
     Scalar dataset_ratio;
 
