@@ -1,5 +1,7 @@
 #include "layer.hpp"
 
+#include <utility>
+
 #include "functions.hpp"
 #include "types.hpp"
 #include "utility.hpp"
@@ -33,28 +35,27 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
     }
 
     // Initialize weights and biases pre-transposed for more efficient matrix multiplication later on
-    W = Matrix::Zero(output_size, input_size);
+    params = Parameters(output_size, input_size);
     switch (init_type) {
     case InitType::HE: {
         std::normal_distribution<Scalar> normal_dist(0.0, distribution_value);
-        for (Eigen::Index i = 0; i < W.size(); ++i) {
-            W(i) = normal_dist(get_trial_generator());
+        for (Eigen::Index i = 0; i < params.W.size(); ++i) {
+            params.W(i) = normal_dist(get_trial_generator());
         }
     } break;
     default: {
         std::uniform_real_distribution<Scalar> uniform_dist(-distribution_value, distribution_value);
-        for (Eigen::Index i = 0; i < W.size(); ++i) {
-            W(i) = uniform_dist(get_trial_generator());
+        for (Eigen::Index i = 0; i < params.W.size(); ++i) {
+            params.W(i) = uniform_dist(get_trial_generator());
         }
     } break;
     }
 
     setOptimizer(opt_type);
-    b = Vector::Zero(output_size);
 }
 
 // DenseLayer constructor that initializes weights and biases with the provided matrices and vectors
-DenseLayer::DenseLayer(Matrix weights, Vector biases, OptimizerType opt_type, bool instantiate_optimizer) : W(std::move(weights)), b(std::move(biases)) {
+DenseLayer::DenseLayer(Parameters params, OptimizerType opt_type, bool instantiate_optimizer) : params(std::move(params)) {
     if (instantiate_optimizer) {
         setOptimizer(opt_type);
     }
@@ -62,13 +63,13 @@ DenseLayer::DenseLayer(Matrix weights, Vector biases, OptimizerType opt_type, bo
 
 // Forward pass through the DenseLayer, saving the input for backpropagation
 Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
-    if (W.cols() != input_matrix.rows()) {
+    if (params.W.cols() != input_matrix.rows()) {
         throw std::runtime_error("Dimension mismatch in DenseLayer forward pass");
     }
     if (training) {
         X = input_matrix; // Store the input for backpropagation
     }
-    return (W * input_matrix).colwise() + b; // Multiply weights with input and add bias
+    return (params.W * input_matrix).colwise() + params.b; // Multiply weights with input and add bias
 }
 
 // Backward pass through the DenseLayer, updating weights and biases based on the output gradient
@@ -80,11 +81,11 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, S
     // Calculate the neuron gradient to propagate to the previous layer. Skipped for the first layer of the network
     Matrix input_gradient;
     if (!is_first_layer) {
-        input_gradient = W.transpose() * output_gradient;
+        input_gradient = params.W.transpose() * output_gradient;
     }
 
     // Update weights and biases using the optimizer
-    optimizer->update(W, b, weights_delta, bias_delta, model, batch_fraction);
+    optimizer->update(params, Parameters(weights_delta, bias_delta), model, batch_fraction);
 
     return input_gradient;
 }
