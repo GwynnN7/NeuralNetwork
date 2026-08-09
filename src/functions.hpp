@@ -69,8 +69,13 @@ constexpr bool has_identity_derivative(ActivationType activation) noexcept {
 // Functions to compute loss and its derivative (error, without regularization)
 namespace LossFunctions {
 inline Scalar mse(const Matrix& target, const Matrix& prediction) {
-    // Mean over the patterns (p) of the sum over the output units (k): f = (1 / l) * sum_p(sum_k((y* - y)^2))
-    return (prediction - target).array().square().colwise().sum().mean();
+    // f = (1 / l) * sum_p(sum_k((y* - y)^2))
+    return (prediction - target).cwiseSquare().colwise().sum().mean();
+}
+
+inline Scalar mee(const Matrix& target, const Matrix& prediction) {
+    // f = (1 / l) * sum_p(sqrt(sum_k((y* - y)^2)))
+    return (prediction - target).colwise().norm().mean();
 }
 
 inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
@@ -134,4 +139,5 @@ constexpr std::optional<LossPair> loss_for(LossType type) noexcept {
     const auto entry = std::ranges::find(loss_functions, type, &std::pair<LossType, LossPair>::first);
     return entry != loss_functions.end() ? std::optional(entry->second) : std::nullopt;
 }
+
 } // namespace Lookup

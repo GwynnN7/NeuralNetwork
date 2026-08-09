@@ -28,7 +28,7 @@ struct Model {
     TaskType task = TaskType::REGRESSION;
 
     void print() const;
-    QUERY static std::vector<Model> load_grid_search(const std::string& filename);
+    OUT static std::vector<Model> load_grid_search(const std::string& filename);
 };
 
 // Forward declarations
@@ -37,5 +37,5 @@ class Network;
 
 namespace Serializer {
 void dump_model(const std::filesystem::path& file, const Model& model, const Network& network);
-QUERY std::expected<std::unique_ptr<Network>, std::string> load_model(const std::filesystem::path& file, const Dataset& dataset);
+OUT std::expected<std::unique_ptr<Network>, std::string> load_model(const std::filesystem::path& file, const Dataset& dataset);
 } // namespace Serializer

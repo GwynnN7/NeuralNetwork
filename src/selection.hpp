@@ -15,10 +15,10 @@ struct SelectionScore {
     Scalar tie_metric = INF;
 
     // Check if the score is valid (not NaN or Inf)
-    QUERY bool valid() const noexcept { return std::isfinite(main_metric) && std::isfinite(tie_metric); }
+    OUT bool valid() const noexcept { return std::isfinite(main_metric) && std::isfinite(tie_metric); }
 
     // Compares two SelectionScores, lower is better
-    QUERY bool operator<(const SelectionScore& other) const noexcept {
+    OUT bool operator<(const SelectionScore& other) const noexcept {
         if (main_metric != other.main_metric) {
             return main_metric < other.main_metric;
         }
@@ -27,7 +27,7 @@ struct SelectionScore {
 
     // Returns the score of a run, which is the minimum over windows of the maximum error within the window
     // This score chooses the least worst model over windows of epochs, keeping the most stable one rather than the lucky one
-    QUERY static SelectionScore from_run(const RunCurves& run) {
+    OUT static SelectionScore from_run(const RunCurves& run) {
         const std::vector<Metrics>& epochs = run.holdout.epochs;
         const SelectionScore invalid{INF, INF};
 
@@ -64,7 +64,7 @@ struct SelectionScore {
     }
 
     // Average score of a set of SelectionScores
-    QUERY static SelectionScore average_scores(const std::vector<SelectionScore>& scores) {
+    OUT static SelectionScore average_scores(const std::vector<SelectionScore>& scores) {
         // If any run is invalid, the score is invalid
         if (scores.empty() || std::ranges::any_of(scores, [](const SelectionScore& s) { return !s.valid(); })) {
             return {INF, INF};

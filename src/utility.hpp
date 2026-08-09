@@ -46,7 +46,7 @@ inline void set_split_seed(unsigned int seed) {
 }
 
 // Get the class index for a given sample from the labels
-QUERY inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
+OUT inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
     if (labels.rows() == 1) { // Binary classification
         return labels(0, sample_index) >= Scalar(0.5) ? 1 : 0;
     } else { // Multi-class classification
@@ -57,21 +57,21 @@ QUERY inline int get_task_class(const Matrix& labels, const Eigen::Index sample_
 }
 
 // Trim leading and trailing whitespace from a string
-QUERY inline std::string trim(const std::string& s) {
-    const auto begin = s.find_first_not_of(" \t\r\n");
+OUT inline std::string trim(const std::string& str) {
+    const auto begin = str.find_first_not_of(" \t\r\n");
     if (begin == std::string::npos) {
         return {};
     }
-    const auto end = s.find_last_not_of(" \t\r\n");
-    return s.substr(begin, end - begin + 1);
+    const auto end = str.find_last_not_of(" \t\r\n");
+    return str.substr(begin, end - begin + 1);
 }
 
 // Parse a whole string as a number of type T
 template <typename T>
-QUERY inline std::optional<T> parse_number(const std::string& s) noexcept {
+OUT inline std::optional<T> parse_number(const std::string& str) noexcept {
     T value{};
-    const char* last = s.data() + s.size();
-    const auto [ptr, err] = std::from_chars(s.data(), last, value);
+    const char* last = str.data() + str.size();
+    const auto [ptr, err] = std::from_chars(str.data(), last, value);
     // If the error isn't none or the pointer didn't reach the end of the string
     if (err != std::errc{} || ptr != last) {
         return std::nullopt;
@@ -80,13 +80,13 @@ QUERY inline std::optional<T> parse_number(const std::string& s) noexcept {
 }
 
 // Check if the whole string is a number ("-1" and "1e-3" count, "data_1" does not)
-QUERY inline bool is_number(const std::string& s) {
-    return parse_number<double>(s).has_value();
+OUT inline bool is_number(const std::string& str) {
+    return parse_number<double>(str).has_value();
 }
 
 // Parse a cell, reporting the file and line it came from, and the field name if available
 template <typename T>
-QUERY T parse_cell(const std::string& cell, const std::string& filename, int line, const std::string& field = "") {
+OUT T parse_cell(const std::string& cell, const std::string& filename, int line, const std::string& field = "") {
     if (const std::optional<T> value = parse_number<T>(cell)) {
         return *value;
     }
@@ -100,7 +100,7 @@ struct CsvRow {
 };
 
 // Load a CSV file into a vector of CsvRow, skipping comments and empty lines
-QUERY inline std::vector<CsvRow> load_csv(const std::string& filename, char delimiter = ',', bool skip_header = false) {
+OUT inline std::vector<CsvRow> load_csv(const std::string& filename, char delimiter = ',', bool skip_header = false) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Could not open file: " + filename);

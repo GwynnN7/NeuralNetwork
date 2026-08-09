@@ -20,14 +20,14 @@ struct Stats {
 struct RunSummary {
     std::vector<Metrics> runs;
 
-    QUERY bool empty() const noexcept { return runs.empty(); }
-    QUERY size_t size() const noexcept { return runs.size(); }
+    OUT bool empty() const noexcept { return runs.empty(); }
+    OUT size_t size() const noexcept { return runs.size(); }
 
     void add_trial(const Metrics& run) {
         runs.push_back(run);
     }
 
-    QUERY Stats get(Scalar Metrics::* field) const {
+    OUT Stats get(Scalar Metrics::* field) const {
         if (empty()) {
             return {};
         }
@@ -53,6 +53,10 @@ struct RunSummary {
         const Stats err = get(&Metrics::error);
         const Stats mse = get(&Metrics::mse);
         std::println("  • Error: {:.3f} ± {:.3f} - MSE: {:.3f} ± {:.3f} ({} runs)", err.mean, err.std, mse.mean, mse.std, runs.size());
+        if (!track_accuracy) {
+            const Stats mee = get(&Metrics::mee);
+            std::println("  • MEE: {:.3f} ± {:.3f}", mee.mean, mee.std);
+        }
     }
 };
 
