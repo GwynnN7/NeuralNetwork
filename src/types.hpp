@@ -38,6 +38,26 @@ struct LossPair {
     LossDerivative derivative = nullptr;
 };
 
+struct Parameters {
+    Matrix W;
+    Vector b;
+
+    Parameters() : W(), b() {}
+    Parameters(Eigen::Index output_size, Eigen::Index input_size) : W(Matrix::Zero(output_size, input_size)), b(Vector::Zero(output_size)) {}
+    Parameters(Matrix weights, Vector biases) : W(std::move(weights)), b(std::move(biases)) {
+        if (W.rows() != b.size()) {
+            throw std::invalid_argument("Weights and biases must have compatible dimensions");
+        }
+    }
+    void operator+=(const Parameters& other) {
+        if (W.rows() != other.W.rows() || W.cols() != other.W.cols() || b.size() != other.b.size()) {
+            throw std::invalid_argument("Cannot sum Parameters with different dimensions");
+        }
+        W += other.W;
+        b += other.b;
+    }
+};
+
 // Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
 // Define a small epsilon value to avoid log(0) in loss functions (that works for both float and double, *8 is a safety for single precision)
