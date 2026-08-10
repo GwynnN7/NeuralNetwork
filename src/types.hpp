@@ -15,35 +15,41 @@
 #define SCALAR_TYPE float
 #endif
 
-// Define a macro for marking functions as [[nodiscard]]
+// Define a macro for marking [[nodiscard]] and [[fallthrough]]
 #define OUT [[nodiscard]]
+#define FALLTHROUGH [[fallthrough]]
 
-// Define types for Scalar and commonly used Matrix and Vector
+// Define types for Scalar and commonly used Matrix and Vector.
 using Scalar = SCALAR_TYPE;
 using Matrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
 using Vector = Eigen::Vector<Scalar, Eigen::Dynamic>;
 
 // Define types for Activation and Loss functions
-using LossFunction = Scalar (*)(const Matrix&, const Matrix&);
-using LossDerivative = Matrix (*)(const Matrix&, const Matrix&);
 using ActivationFunction = Matrix (*)(const Matrix&);
-
 struct ActivationPair {
     ActivationFunction function = nullptr;
     ActivationFunction derivative = nullptr;
 };
-
+using LossFunction = Scalar (*)(const Matrix&, const Matrix&);
+using LossDerivative = Matrix (*)(const Matrix&, const Matrix&);
 struct LossPair {
     LossFunction function = nullptr;
     LossDerivative derivative = nullptr;
 };
 
+// Structure to hold weights and biases for a layer
 struct Parameters {
     Matrix W;
     Vector b;
 
-    Parameters() : W(), b() {}
-    Parameters(Eigen::Index output_size, Eigen::Index input_size) : W(Matrix::Zero(output_size, input_size)), b(Vector::Zero(output_size)) {}
+    Parameters() = default;
+
+    // Initialize weights and biases with specified dimensions: outputs as rows and inputs as columns
+    Parameters(Eigen::Index output_size, Eigen::Index input_size)
+        : W(Matrix::Zero(output_size, input_size)),
+          b(Vector::Zero(output_size)) {}
+
+    // Initialize weights and biases with provided data
     Parameters(Matrix weights, Vector biases) : W(std::move(weights)), b(std::move(biases)) {
         if (W.rows() != b.size()) {
             throw std::invalid_argument("Weights and biases must have compatible dimensions");
@@ -58,11 +64,17 @@ struct Parameters {
     }
 };
 
+// Structure to hold a row of CSV with its line number
+struct CsvRow {
+    int line = 0;
+    std::vector<std::string> cells;
+};
+
 // Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
-// Define a small epsilon value to avoid log(0) in loss functions (that works for both float and double, *8 is a safety for single precision)
+// Define a small epsilon value to avoid log(0) in loss functions (works for both float and double, *8 is a safety for single precision)
 inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
-// Define a constant for infinity, used in metrics and selection scores
+// Define a constant for infinity
 inline constexpr Scalar INF = std::numeric_limits<Scalar>::infinity();
 
 // Define a relative tolerance for early stopping
@@ -74,7 +86,7 @@ inline constexpr int SELECTION_WINDOW = 20;
 
 // Define a multiplier for the target learning rate in linear decay
 inline constexpr Scalar TARGET_ETA_MULTIPLIER = 0.01;
-// Define a multiplier for the tau parameter in linear learning rate decay
+// Define a multiplier for the tau parameter for learning rate linear decay
 inline constexpr Scalar TAU_MULTIPLIER = 0.8;
 
 // Number of hyperparameter columns required in the grid-search CSV. 12th column (beta1) is optional and defaults to ADAM_B1
@@ -100,8 +112,9 @@ enum class OptimizerType {
 };
 
 enum class StoppingRule {
-    CONVERGENCE,
-    ERROR_LEVEL
+    NONE,
+    ERROR,
+    PATIENCE
 };
 
 enum class NormalizationType {
@@ -111,32 +124,41 @@ enum class NormalizationType {
     Z_SCORE
 };
 
-enum class LossType { MSE,
-                      BCE,
-                      CCE };
+enum class LossType {
+    MSE,
+    MEE,
+    BCE,
+    CCE
+};
 
-enum class TaskType { REGRESSION,
-                      CLASSIFICATION };
+enum class TaskType {
+    REGRESSION,
+    CLASSIFICATION
+};
 
-enum class InitType { RANDOM,
-                      LECUN,
-                      GLOROT,
-                      HE };
+enum class InitType {
+    RANDOM,
+    LECUN,
+    GLOROT,
+    HE
+};
 
-enum class DatasetType { XOR,
-                         XOR_HOT,
-                         MONK1,
-                         MONK1_HOT,
-                         MONK2,
-                         MONK2_HOT,
-                         MONK3,
-                         MONK3_HOT,
-                         MLCUP,
-                         MNIST };
+enum class DatasetType {
+    XOR,
+    XOR_HOT,
+    MONK1,
+    MONK1_HOT,
+    MONK2,
+    MONK2_HOT,
+    MONK3,
+    MONK3_HOT,
+    MLCUP,
+    MNIST
+};
 
 // Lookup tables for the enums above
 namespace Lookup {
-// Define a template for a name table that maps enum values to string views
+// Define a template for a table that maps enum values to string views
 template <typename T, std::size_t N>
 using NameTable = std::array<std::pair<T, std::string_view>, N>;
 
@@ -168,8 +190,9 @@ inline constexpr NameTable<OptimizerType, 3> optimizers{{
     {OptimizerType::RMSPROP, "rmsprop"},
 }};
 
-inline constexpr NameTable<LossType, 3> losses{{
+inline constexpr NameTable<LossType, 4> losses{{
     {LossType::MSE, "mse"},
+    {LossType::MEE, "mee"},
     {LossType::BCE, "bce"},
     {LossType::CCE, "cce"},
 }};
@@ -199,9 +222,10 @@ inline constexpr NameTable<DatasetType, 10> datasets{{
     {DatasetType::MNIST, "MNIST"},
 }};
 
-inline constexpr NameTable<StoppingRule, 2> stopping_rules{{
-    {StoppingRule::CONVERGENCE, "convergence"},
-    {StoppingRule::ERROR_LEVEL, "error"},
+inline constexpr NameTable<StoppingRule, 3> stopping_rules{{
+    {StoppingRule::NONE, "none"},
+    {StoppingRule::ERROR, "error"},
+    {StoppingRule::PATIENCE, "patience"},
 }};
 
 inline constexpr NameTable<NormalizationType, 4> normalizations{{
@@ -225,8 +249,9 @@ inline constexpr NameTable<OptimizerType, 3> optimizer_labels{{
     {OptimizerType::RMSPROP, "RMSProp"},
 }};
 
-inline constexpr NameTable<LossType, 3> loss_labels{{
+inline constexpr NameTable<LossType, 4> loss_labels{{
     {LossType::MSE, "Mean Squared Error"},
+    {LossType::MEE, "Mean Euclidean Error"},
     {LossType::BCE, "Binary Cross-Entropy"},
     {LossType::CCE, "Categorical Cross-Entropy"},
 }};
@@ -252,8 +277,9 @@ inline const std::map<std::string, DatasetType> str_to_dataset{
 };
 
 inline const std::map<std::string, StoppingRule> str_to_stopping{
-    {"convergence", StoppingRule::CONVERGENCE},
-    {"level", StoppingRule::ERROR_LEVEL},
+    {"none", StoppingRule::NONE},
+    {"error", StoppingRule::ERROR},
+    {"patience", StoppingRule::PATIENCE},
 };
 
 inline const std::map<std::string, NormalizationType> str_to_normalization{

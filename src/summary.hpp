@@ -23,10 +23,11 @@ struct RunSummary {
     OUT bool empty() const noexcept { return runs.empty(); }
     OUT size_t size() const noexcept { return runs.size(); }
 
-    void add_trial(const Metrics& run) {
+    void add_run(const Metrics& run) {
         runs.push_back(run);
     }
 
+    // Get the mean and standard deviation of a metric field across all runs
     OUT Stats get(Scalar Metrics::* field) const {
         if (empty()) {
             return {};
@@ -46,8 +47,7 @@ struct RunSummary {
             std::println("  • (no runs recorded)");
             return;
         }
-        // A single run has no spread to speak of, so "± 0.000" would only read as measured agreement
-        const auto figure = [this](const char* label, Scalar Metrics::* field, int decimals = 3, Scalar factor = 1, const char* unit = "") {
+        const auto log = [this](const char* label, Scalar Metrics::* field, int decimals = 3, Scalar factor = 1, const char* unit = "") {
             const Stats stat = get(field);
             if (runs.size() > 1) {
                 std::println("  • {}: {:.{}f}{} ± {:.{}f}{}", label, stat.mean * factor, decimals, unit, stat.std * factor, decimals, unit);
@@ -57,30 +57,36 @@ struct RunSummary {
         };
 
         if (track_accuracy) {
-            figure("Accuracy", &Metrics::accuracy, 2, 100.0, "%");
-            figure("Error", &Metrics::error);
-            figure("MSE", &Metrics::mse);
+            log("Accuracy", &Metrics::accuracy, 2, 100.0, "%");
+            log("Error", &Metrics::error);
+            log("MSE", &Metrics::mse);
         } else {
-            figure("MSE", &Metrics::mse);
-            figure("MEE", &Metrics::mee);
+            log("MEE", &Metrics::mee);
+            log("MSE", &Metrics::mse);
         }
-        std::println("  ({} {})", runs.size(), runs.size() == 1 ? "run" : "runs");
+        std::println("  ({} {})", size(), size() == 1 ? "run" : "runs");
     }
 };
 
-// Collects the best metric of each run grouped for the entire split
+// Collects the best metric of each run for both training and holdout sets
 struct SplitSummary {
     RunSummary training;
     RunSummary holdout;
 
-    void add_trial(const RunCurves& run) {
-        training.add_trial(run.training.at(run.best_epoch));
-        holdout.add_trial(run.holdout.at(run.best_epoch));
+    // If an entire run is provided, add the best metrics from both training and holdout sets
+    void add_run(const RunCurves& run) {
+        // Don't add runs that were interrupted by an inf/NaN error or that have no epochs recorded
+        if (run.training.invalid || run.training.empty()) {
+            return;
+        }
+        training.add_run(run.training.at(run.best_epoch));
+        holdout.add_run(run.holdout.at(run.best_epoch));
     }
 
-    void add_trial(const Metrics& training_metrics, const Metrics& holdout_metrics) {
-        training.add_trial(training_metrics);
-        holdout.add_trial(holdout_metrics);
+    // If only one metric is provided, add it as a run
+    void add_run(const Metrics& training_metrics, const Metrics& holdout_metrics) {
+        training.add_run(training_metrics);
+        holdout.add_run(holdout_metrics);
     }
 
     void print(bool track_accuracy, const std::string& holdout_name = "Holdout") const {

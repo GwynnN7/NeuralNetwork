@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <vector>
 
+// Generates a single holdout split
 DataSplit Splitter::holdout_split(int num_samples, bool use_default) const {
     if (num_samples < 2) {
         throw std::invalid_argument("Need at least 2 samples to split the dataset");
@@ -42,10 +43,7 @@ DataSplit Splitter::holdout_split(int num_samples, bool use_default) const {
     return holdout;
 }
 
-DataSplit Splitter::final_split() const {
-    return holdout_split(dataset.num_samples, true);
-}
-
+// Generates a k-fold split with the given indices
 std::vector<DataSplit> Splitter::kfold(std::vector<int> indices, int k) const {
     if (k < 2) {
         throw std::invalid_argument("Need at least 2 folds for k-fold cross-validation");
@@ -88,6 +86,7 @@ std::vector<DataSplit> Splitter::kfold(std::vector<int> indices, int k) const {
     return folds;
 }
 
+// Generates a standard k-fold split (without considering class distribution)
 std::vector<DataSplit> Splitter::standard_split(int k, int num_samples) const {
     // Create a vector of indices representing the samples
     std::vector<int> indices(num_samples);
@@ -96,12 +95,13 @@ std::vector<DataSplit> Splitter::standard_split(int k, int num_samples) const {
     return kfold(std::move(indices), k);
 }
 
+// Generates a stratified k-fold split, so each fold has approximately the same class distribution
 std::vector<DataSplit> Splitter::stratified_split(int k, const Matrix& labels) const {
     const int num_samples = static_cast<int>(labels.cols());
     const int num_classes = static_cast<int>(labels.rows());
 
     // Create a vector of indices per class
-    // For binary classification, there are two classes (0 and 1), and for one_hot, there are `num_classes` classes
+    // For binary classification there are two classes (0 and 1), while for one_hot there are `num_classes` classes
     std::vector<std::vector<int>> class_indices(num_classes == 1 ? 2 : num_classes);
 
     // Group indices by class
@@ -115,6 +115,7 @@ std::vector<DataSplit> Splitter::stratified_split(int k, const Matrix& labels) c
         if (static_cast<int>(indices.size()) < k) {
             throw std::invalid_argument(std::format("{} samples are too few for {} stratified folds", indices.size(), k));
         }
+        // Generate a k-fold split for the current class and concatenate it to the main folds
         for (auto&& [fold, class_fold] : std::views::zip(folds, kfold(indices, k))) {
             fold.concat(class_fold);
         }
@@ -123,6 +124,7 @@ std::vector<DataSplit> Splitter::stratified_split(int k, const Matrix& labels) c
     return folds;
 }
 
+// Determines and generates a split of the dataset or of the provided indices
 std::vector<DataSplit> Splitter::get(int folds, const std::vector<int>* indices) const {
     const int samples = (indices != nullptr) ? static_cast<int>(indices->size()) : dataset.num_samples;
     std::vector<DataSplit> splits;

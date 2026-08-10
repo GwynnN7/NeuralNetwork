@@ -4,52 +4,53 @@
 
 // Activation Functions
 
+// Activation Functions: o_t = f(net_t), where net_t = sum_u(w_tu * o_u) is the net input of a unit
 namespace ActivationFunctions {
-inline Matrix sigmoid(const Matrix& X) {
-    // f(x) = 1 / (1 + e^(-x))
-    return Scalar(1) / (Scalar(1) + (-X.array()).exp());
+inline Matrix sigmoid(const Matrix& net) {
+    // f(net) = 1 / (1 + e^(-net))
+    return Scalar(1) / (Scalar(1) + (-net.array()).exp());
 }
 
-inline Matrix sigmoid_derivative(const Matrix& X) {
-    // f'(x) = f(x) * (1 - f(x))
-    Matrix s = sigmoid(X);
+inline Matrix sigmoid_derivative(const Matrix& net) {
+    // f'(net) = f(net) * (1 - f(net))
+    Matrix s = sigmoid(net);
     return s.array() * (Scalar(1) - s.array());
 }
 
-inline Matrix relu(const Matrix& X) {
-    // f(x) = max(0, x)
-    return X.array().max(Scalar(0));
+inline Matrix relu(const Matrix& net) {
+    // f(net) = max(0, net)
+    return net.array().max(Scalar(0));
 }
 
-inline Matrix relu_derivative(const Matrix& X) {
-    // f'(x) = 1 if x > 0, else 0
-    return (X.array() > Scalar(0)).template cast<Scalar>();
+inline Matrix relu_derivative(const Matrix& net) {
+    // f'(net) = 1 if net > 0, else 0
+    return (net.array() > Scalar(0)).template cast<Scalar>();
 }
 
-inline Matrix tanh_activation(const Matrix& X) {
-    // f(x) = (e^x - e^(-x)) / (e^x + e^(-x)) = tanh(x)
-    return X.array().tanh();
+inline Matrix tanh_activation(const Matrix& net) {
+    // f(net) = (e^net - e^(-net)) / (e^net + e^(-net)) = tanh(net)
+    return net.array().tanh();
 }
 
-inline Matrix tanh_derivative(const Matrix& X) {
-    // f'(x) = 1 - f(x)^2
-    Matrix t = tanh_activation(X);
+inline Matrix tanh_derivative(const Matrix& net) {
+    // f'(net) = 1 - f(net)^2
+    Matrix t = tanh_activation(net);
     return Scalar(1) - (t.array() * t.array());
 }
 
-inline Matrix linear(const Matrix& X) {
-    // f(x) = x
-    return X;
+inline Matrix linear(const Matrix& net) {
+    // f(net) = net
+    return net;
 }
 
-inline Matrix linear_derivative(const Matrix& X) {
-    // f'(x) = 1 (see has_identity_derivative)
-    return Matrix::Ones(X.rows(), X.cols());
+inline Matrix linear_derivative(const Matrix& net) {
+    // f'(net) = 1 (see has_identity_derivative)
+    return Matrix::Ones(net.rows(), net.cols());
 }
 
-inline Matrix softmax(const Matrix& X) {
-    // f(x) = e^(x_i) / sum(e^(x_j))
-    Matrix inputs = X.rowwise() - X.colwise().maxCoeff(); // Avoid e^x overflow
+inline Matrix softmax(const Matrix& net) {
+    // f(net_k) = e^(net_k) / sum_j(e^(net_j))
+    Matrix inputs = net.rowwise() - net.colwise().maxCoeff(); // Avoid e^x overflow
     inputs = inputs.array().exp();
     Matrix sum = inputs.colwise().sum();
     return inputs.array().rowwise() / sum.row(0).array();
@@ -69,23 +70,30 @@ constexpr bool has_identity_derivative(ActivationType activation) noexcept {
 // Functions to compute loss and its derivative (error, without regularization)
 namespace LossFunctions {
 inline Scalar mse(const Matrix& target, const Matrix& prediction) {
-    // f = (1 / l) * sum_p(sum_k((y* - y)^2))
-    return (prediction - target).cwiseSquare().colwise().sum().mean();
+    // E = (1 / l) * sum_p(sum_k((d_k - o_k)^2))
+    return (prediction - target).colwise().squaredNorm().mean();
 }
 
 inline Scalar mee(const Matrix& target, const Matrix& prediction) {
-    // f = (1 / l) * sum_p(sqrt(sum_k((y* - y)^2)))
+    // E = (1 / l) * sum_p(sqrt(sum_k((d_k - o_k)^2)))
     return (prediction - target).colwise().norm().mean();
 }
 
 inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
-    // f' = 2 * (y* - y)
+    // dE/do_k = 2 * (o_k - d_k)
     return 2 * (prediction - target);
+}
+
+inline Matrix mee_derivative(const Matrix& target, const Matrix& prediction) {
+    // dE/do_k = (o_k - d_k) / sqrt(sum_k((o_k - d_k)^2))
+    const Matrix numerator = prediction - target;
+    const Matrix denominator = numerator.colwise().norm().cwiseMax(LOSS_EPSILON);
+    return numerator.array().rowwise() / denominator.array().row(0);
 }
 
 inline Scalar bce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // f = -(1 / l) * sum(y * log(y*) + (1 - y) * log(1 - y*))
+    // E = -(1 / l) * sum_p(sum_k(d_k * log(o_k) + (1 - d_k) * log(1 - o_k)))
     return -(target.array() * pred_clipped.array().log() +
              (Scalar(1) - target.array()) * (Scalar(1) - pred_clipped.array()).log())
                 .sum() /
@@ -93,18 +101,18 @@ inline Scalar bce(const Matrix& target, const Matrix& prediction) {
 }
 
 inline Matrix bce_derivative(const Matrix& target, const Matrix& prediction) {
-    // Combined derivative of BCE + Sigmoid: f' = y* - y (see includes_output_derivative)
+    // Combined derivative of BCE + Sigmoid: dE/dnet_k = o_k - d_k (see includes_output_derivative)
     return (prediction - target);
 }
 
 inline Scalar cce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // f = -(1 / l) * sum(y * log(y*))
+    // E = -(1 / l) * sum_p(sum_k(d_k * log(o_k)))
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
 
 inline Matrix cce_derivative(const Matrix& target, const Matrix& prediction) {
-    // Combined derivative of CCE + Softmax: f' = y* - y (see includes_output_derivative)
+    // Combined derivative of CCE + Softmax: dE/dnet_k = o_k - d_k (see includes_output_derivative)
     return (prediction - target);
 }
 
@@ -124,8 +132,9 @@ inline constexpr std::array<std::pair<ActivationType, ActivationPair>, 5> activa
     {ActivationType::SOFTMAX, {ActivationFunctions::softmax, ActivationFunctions::softmax_derivative}},
 }};
 
-inline constexpr std::array<std::pair<LossType, LossPair>, 3> loss_functions{{
+inline constexpr std::array<std::pair<LossType, LossPair>, 4> loss_functions{{
     {LossType::MSE, {LossFunctions::mse, LossFunctions::mse_derivative}},
+    {LossType::MEE, {LossFunctions::mee, LossFunctions::mee_derivative}},
     {LossType::BCE, {LossFunctions::bce, LossFunctions::bce_derivative}},
     {LossType::CCE, {LossFunctions::cce, LossFunctions::cce_derivative}},
 }};

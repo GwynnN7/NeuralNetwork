@@ -21,9 +21,10 @@ class Layer {
 
 class DenseLayer final : public Layer {
   private:
+    // The weights and biases of the layer
     Parameters params;
+    // The optimizer for this layer
     std::unique_ptr<Optimizer> optimizer;
-
     // Parameters of the best epoch
     std::optional<Parameters> snapshot;
 
@@ -53,6 +54,7 @@ class DenseLayer final : public Layer {
 
     void takeSnapshot() override { snapshot = params; }
     void restoreSnapshot() override {
+        // Restore the parameters from the snapshot if it exists
         if (snapshot) {
             params = *snapshot;
         }

@@ -1,7 +1,5 @@
 #include "layer.hpp"
 
-#include <utility>
-
 #include "functions.hpp"
 #include "types.hpp"
 #include "utility.hpp"
@@ -9,6 +7,7 @@
 #include <cmath>
 #include <memory>
 #include <random>
+#include <utility>
 
 // DenseLayer constructor that initializes weights based on the specified initialization type
 DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type) {
@@ -34,7 +33,7 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
         throw std::invalid_argument("Unsupported initialization type");
     }
 
-    // Initialize weights and biases pre-transposed for more efficient matrix multiplication later on
+    // Initialize the weights and biases of the layer using the determined distribution value
     params = Parameters(output_size, input_size);
     switch (init_type) {
     case InitType::HE: {
@@ -69,18 +68,22 @@ Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
     if (training) {
         X = input_matrix; // Store the input for backpropagation
     }
-    return (params.W * input_matrix).colwise() + params.b; // Multiply weights with input and add bias
+    // Return the output of the layer by multiplying the weights with the input and adding the bias
+    // net_t = sum_u(w_tu * o_u) + w_t0, for every pattern; or Y = W * X + b
+    return (params.W * input_matrix).colwise() + params.b;
 }
 
 // Backward pass through the DenseLayer, updating weights and biases based on the output gradient
 Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) {
     const int batch_size = static_cast<int>(X.cols());
-    Matrix weights_delta = (output_gradient * X.transpose()) / batch_size; // Calculate the delta of weights (average over the batch)
-    Vector bias_delta = output_gradient.rowwise().sum() / batch_size;      // Calculate the delta of biases (sum over columns to aggregate, and average over the batch)
+    // Calculate the gradients for weights and biases
+    Matrix weights_delta = (output_gradient * X.transpose()) / batch_size; // dE/dw_tu = (1 / mb) * sum_p(dE/dnet_t * o_u)
+    Vector bias_delta = output_gradient.rowwise().sum() / batch_size;      // dE/dw_t0 = (1 / mb) * sum_p(dE/dnet_t)
 
     // Calculate the neuron gradient to propagate to the previous layer. Skipped for the first layer of the network
     Matrix input_gradient;
     if (!is_first_layer) {
+        // dE/do_u = sum_t(w_tu * dE/dnet_t), the sum over the units this unit connects to in the next layer
         input_gradient = params.W.transpose() * output_gradient;
     }
 
@@ -107,6 +110,7 @@ Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
     if (training && activation.derivative) {
         X = input_matrix; // Only stored when backward pass will actually use it to calculate the derivative
     }
+    // o_t = f(net_t)
     return activation.function(input_matrix); // Call the activation function on the input matrix
 }
 
@@ -115,6 +119,7 @@ Matrix ActivationLayer::backward(const Matrix& output_gradient, const Model&, Sc
     if (!activation.derivative) {
         return output_gradient; // Multiplying by this derivative would do nothing or fail
     }
+    // dE/dnet_t = dE/do_t * f'(net_t)
     Matrix derivative = activation.derivative(X);    // Calculate the derivative of the activation function with respect to the input
     return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
 }

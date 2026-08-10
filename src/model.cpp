@@ -38,9 +38,9 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         Model model;
         model.id = parse_cell<int>(row[0], filename, row_number, "id");
 
-        // Parse the network structure from the second column (e.g., "64-32-10" for a network with 3 hidden layers).
         std::string num;
         std::stringstream struct_ss(row[1]);
+        // Parse the network structure from the second column (for example "64-32-10" for a network with 3 hidden layers).
         while (std::getline(struct_ss, num, '-')) {
             const int neurons = parse_cell<int>(trim(num), filename, row_number, "layer size");
             if (neurons <= 0) {
@@ -54,6 +54,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
 
         // Parse the remaining hyperparameters from the row
         auto try_lookup = [&](const auto& table, int column, const char* tag) {
+            // Convert the string to lowercase and look for the corresponding enum in the provided table
             const auto value = Lookup::value_of(table, to_lower(row[column]));
             if (!value) {
                 throw std::runtime_error("Grid row " + std::to_string(row_number) + ": unknown " + tag + " '" + row[column] + "'");
@@ -74,13 +75,13 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
 
         // Avoid out-of-range hyperparameters
         if (model.batch_size < 0) {
-            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": batch size must be non-negative (0 means full batch)");
+            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": batch size can't be negative (0 means full batch)");
         }
         if (!(model.eta > 0)) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": eta must be positive");
         }
         if (model.lambda < 0) {
-            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": lambda must be non-negative");
+            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": lambda can't be negative");
         }
         if (model.alpha < 0 || model.alpha >= 1) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": alpha must be in [0, 1)");
@@ -96,13 +97,10 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         throw std::runtime_error("Grid search file does not contain any valid models: " + filename);
     }
 
-    // Check that all model ids are unique
-    std::vector<int> ids;
-    ids.reserve(grid_search.size());
-    for (const auto& model : grid_search) {
-        ids.push_back(model.id);
-    }
+    std::vector<int> ids(grid_search.size());
+    std::ranges::transform(grid_search, ids.begin(), [](const Model& m) { return m.id; });
     std::ranges::sort(ids);
+    // Check that all model ids are unique
     if (std::ranges::adjacent_find(ids) != ids.end()) {
         throw std::runtime_error("Grid search file contains models with duplicate ids: " + filename);
     }
@@ -131,12 +129,12 @@ void Model::print() const {
 // Dump and Load everything needed to reconstruct the model
 namespace Serializer {
 namespace {
-constexpr std::uint32_t MAGIC = 0x4E4E4554; // "NNET" in hex
+constexpr std::uint32_t MAGIC = 0x4D434E54; // "MCNT" in hex
 
 // Write a value of type T to the output stream in binary format
 template <typename T>
 void write_data(std::ostream& out, const T& value) {
-    static_assert(std::is_trivial_v<T>, "write_data can only be used with Plain Old Data types");
+    static_assert(std::is_trivial_v<T>, "write_data can only be used with standard data types");
 
     out.write(reinterpret_cast<const char*>(&value), sizeof(T));
 }
@@ -144,7 +142,7 @@ void write_data(std::ostream& out, const T& value) {
 // Read a value of type T from the input stream in binary format
 template <typename T>
 T read_data(std::istream& in, const char* tag) {
-    static_assert(std::is_trivial_v<T>, "read_data can only be used with Plain Old Data types");
+    static_assert(std::is_trivial_v<T>, "read_data can only be used with standard data types");
 
     T value{};
     in.read(reinterpret_cast<char*>(&value), sizeof(T));
@@ -156,7 +154,7 @@ T read_data(std::istream& in, const char* tag) {
 
 // Read a fixed number of bytes from the input stream into the destination buffer
 void read_array(std::istream& in, void* dest, std::size_t bytes, const char* tag) {
-    static_assert(std::is_trivial_v<void*>, "read_array can only be used with Plain Old Data types");
+    static_assert(std::is_trivial_v<void*>, "read_array can only be used with standard data types");
 
     in.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(bytes));
     if (!in || in.gcount() != static_cast<std::streamsize>(bytes)) {
@@ -164,7 +162,7 @@ void read_array(std::istream& in, void* dest, std::size_t bytes, const char* tag
     }
 }
 
-// Read a dimension (rows or columns) from the input stream
+// Read the dimension of the next data from the input stream
 std::int32_t read_dimension(std::istream& in, const char* tag, bool allow_zero = false) {
     const std::int32_t value = read_data<std::int32_t>(in, tag);
     if (value < 0 || (value == 0 && !allow_zero)) {
@@ -192,6 +190,7 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     write_data(dump_file, static_cast<std::int32_t>(model.loss_type));
     write_data(dump_file, static_cast<std::int32_t>(model.task));
 
+    // Write the normalizers for features and labels data if used
     const auto write_normalizer = [&dump_file](const Normalizer& normalizer) {
         const auto size_opt = normalizer.size();
         write_data(dump_file, static_cast<std::int32_t>(size_opt.value_or(std::make_pair(0, 0)).first));
@@ -209,9 +208,9 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     for (int neurons : model.net_struct) {
         write_data(dump_file, static_cast<std::int32_t>(neurons));
     }
-    // Explicit layer count, checked on load
-    write_data(dump_file, static_cast<std::int32_t>(dense_layers.size()));
 
+    // Write the weights and biases for each layer
+    write_data(dump_file, static_cast<std::int32_t>(dense_layers.size()));
     for (const auto* layer : dense_layers) {
         const Parameters& layer_params = layer->getParameters();
 
@@ -241,12 +240,13 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
         if (read_data<std::uint32_t>(dump_file, "magic number") != MAGIC) {
             return std::unexpected("not a model file (bad magic number)");
         }
+        // Check the scalar type used in the dumped model
         const std::uint32_t scalar_size = read_data<std::uint32_t>(dump_file, "scalar size");
         if (scalar_size != sizeof(Scalar)) {
             return std::unexpected(std::format("written with {}-byte scalars, this build uses {}-byte", scalar_size, sizeof(Scalar)));
         }
 
-        // Helper lambda to read an enum value
+        // Helper lambda to read an enum value as its integer value
         auto read_enum = [&dump_file](const char* tag, int max_value) {
             const std::int32_t value = read_data<std::int32_t>(dump_file, tag);
             if (value < 0 || value > max_value) {
@@ -255,17 +255,17 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             return value;
         };
 
-        Model model;
-        model.hidden_activation = static_cast<ActivationType>(read_enum("hidden activation", static_cast<int>(ActivationType::SOFTMAX)));
-        model.output_activation = static_cast<ActivationType>(read_enum("output activation", static_cast<int>(ActivationType::SOFTMAX)));
-        model.opt_type = static_cast<OptimizerType>(read_enum("optimizer", static_cast<int>(OptimizerType::ADAM)));
-        model.loss_type = static_cast<LossType>(read_enum("loss", static_cast<int>(LossType::CCE)));
-        model.task = static_cast<TaskType>(read_enum("task", static_cast<int>(TaskType::CLASSIFICATION)));
-
+        Model model{
+            .hidden_activation = static_cast<ActivationType>(read_enum("hidden activation", static_cast<int>(ActivationType::SOFTMAX))),
+            .output_activation = static_cast<ActivationType>(read_enum("output activation", static_cast<int>(ActivationType::SOFTMAX))),
+            .opt_type = static_cast<OptimizerType>(read_enum("optimizer", static_cast<int>(OptimizerType::ADAM))),
+            .loss_type = static_cast<LossType>(read_enum("loss", static_cast<int>(LossType::CCE))),
+            .task = static_cast<TaskType>(read_enum("task", static_cast<int>(TaskType::CLASSIFICATION)))};
         if (model.task != dataset.task) {
             return std::unexpected("trained for a different task type than the dataset");
         }
 
+        // Read the normalizers for features and labels data if used
         const auto read_normalizer = [&dump_file] {
             Normalizer normalizer;
             const std::int32_t size = read_dimension(dump_file, "normalizer size", true);
@@ -277,8 +277,8 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             }
             return normalizer;
         };
-        Normalizer input_norm = read_normalizer();
-        Normalizer target_norm = read_normalizer();
+        Normalizer features_norm = read_normalizer();
+        Normalizer labels_norm = read_normalizer();
 
         const std::int32_t num_layers = read_data<std::int32_t>(dump_file, "layer count");
         if (num_layers <= 0) {
@@ -297,7 +297,6 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
         // Read the weights and biases for each layer
         std::vector<Parameters> layers_params;
         layers_params.reserve(static_cast<size_t>(num_dense));
-
         for (std::int32_t i = 0; i < num_dense; ++i) {
             const std::int32_t rows = read_dimension(dump_file, "weight row count");
             const std::int32_t cols = read_dimension(dump_file, "weight column count");
@@ -325,7 +324,7 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
         }
 
         auto network = std::make_unique<Network>(model, layers_params, false);
-        network->setNormalizers(std::move(input_norm), std::move(target_norm));
+        network->setNormalizers(std::move(features_norm), std::move(labels_norm));
         return network;
     } catch (const std::exception& e) {
         return std::unexpected(e.what());

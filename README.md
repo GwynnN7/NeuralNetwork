@@ -5,20 +5,20 @@ A Neural Network Framework built in **C++** using **Eigen3**. Project designed t
 ## Features
 
 * **Dynamic Architecture**: Network structure and hyperparameters configurable via a `Grid Search` CSV file.
-* **Model Selection**: `Nested K-Fold` Cross-Validation or `Holdout`, selecting on error rate (`MSE` as tie-break) for classification and on loss for regression.
+* **Model Selection**: `Nested K-Fold` Cross-Validation (`Standard` and `Stratified`) or `Holdout`, selecting on error rate for classification and on `MEE` for regression, with `MSE` as tie-break for both.
 * **Activations Functions**: `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, and `Linear`.
-* **Loss Functions**: `MSE` (Mean Squared Error), `BCE` (Binary Cross-Entropy) and `CCE` (Categorical Cross-Entropy).
+* **Loss Functions**: `MSE` (Mean Squared Error), `MEE` (Mean Euclidean Error), `BCE` (Binary Cross-Entropy) and `CCE` (Categorical Cross-Entropy).
 * **Architecture Features**:
     * `L2 Weight Decay` ($\lambda$) and `Momentum` ($\alpha$).
     * `Batch`, `Mini-batch` and `Stochastic` update.
     * `SGD`, `RMSProp` and `Adam` optimizers.
     * `Random`, `Lecun`, `Glorot`, and `He` weight initialization methods.
     * `Linear Decay` of `Learning Rate`.
-    * `Early Stopping` with `Patience`.
-* **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK1(_HOT)`, `MONK2(_HOT)`, `MONK3(_HOT)`.
+    * `Early Stopping` with `Patience`, `Error` level, or `None`.
+* **Datasets Supported**: `XOR(_HOT)`, `MNIST`, `MONK1(_HOT)`, `MONK2(_HOT)`, `MONK3(_HOT)`, `MLCUP`.
     * The `_HOT` datasets are one-hot encoded versions of the original datasets.
 * **Logging & Visualization**: 
-    * `CSV` logging of per-fold metrics.
+    * `CSV` logging of every metric for each run.
     * `CLI` interface for training, testing, and visualizing results.
     * `live_plot.py` script to visualize Loss and Accuracy curves.
     * `best_model.py` script to visualize the results of the best model of each fold.
@@ -37,7 +37,7 @@ Network parameters are defined in a CSV file passed to the `--grid` argument.
 | `output` | Activation function of the `output` layer  | `Sigmoid`, `Softmax`, `Linear` |
 | `init` | Initialization method of the weights| `Random`, `Lecun`, `Glorot`, `He` |
 | `opt` | Optimization method for the weights | `SGD`, `RMSProp`, `Adam` |
-| `loss` | Loss type for gradient calcuation | `MSE`, `BCE`, `CCE` |
+| `loss` | Loss type for gradient calcuation | `MSE`, `MEE`, `BCE`, `CCE` |
 | `batch` | Batch size (use 0 for a single batch) | `int` &ge; 0 |
 | `eta` | Learning rate of the network | `double` > 0 |
 | `lambda`| Regularization hyperparameter | `double` &ge; 0 |
@@ -77,14 +77,14 @@ block of models is testing — and a single model can be commented out without d
 | `RMSProp` | decay of the squared-gradient average | unused | `0.9`–`0.99` |
 | `Adam` | **unused** | first-moment decay | `0.9`–`0.99` |
 
-**`eta` is not comparable across optimizers.** `SGD` needs a larger rate than adaptive methods. Note that `eta` is the *initial* rate: it decays linearly to 1% of it over 80% of the epochs.
+**`eta` is not comparable across optimizers.** `SGD` needs a larger rate than adaptive methods. Note that `eta` is the *initial* rate: it decays linearly to 1% of it over 80% of the epochs that remain after warmup.
 
 **`init` should match `hidden`.** `He` is derived for `ReLU`; `Glorot` and `LeCun` are derived for symmetric saturating
 activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 
-**`lambda` is applied per mini-batch,** so the decay accumulated per epoch scales with the number of batches.
+**`lambda` is decoupled from `eta`** and applied directly to the weights, and each mini-batch applies only its own fraction of it.
 
-**`activation` + `loss` constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require `MSE`; `Softmax` is not valid as a hidden activation.
+**`activation` + `loss` constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require `MSE` or `MEE`; `Softmax` is not valid as a hidden activation.
 
 **`output` + `loss` follows the label encoding.** `Softmax`+`CCE` models the outputs as one distribution and works for one-hot targets; `Sigmoid`+`BCE` treats them as independent, non mutually exclusive labels.
 
@@ -95,21 +95,31 @@ activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 | SGD step | $\eta / (1-\alpha)$ | Effective step size increases with high $\alpha$ |
 | RMSProp step | $\eta / \sqrt{1-\alpha^{t}} \rightarrow \eta$ | No bias correction, so at low $t$ effective step is increased with high $\alpha$ |
 | Adam step | $\approx \eta$ | Bias correction cancels the $\beta_1$ amplification |
-| Decay per epoch | $(1-\eta\lambda)^{B} \approx 1 - \eta\lambda B$ | $B$ = batches per epoch, or 1 at `batch=0` |
+| Decay per epoch | $(1-\lambda/B)^{B} \approx 1-\lambda$ | Independent of $B$ = batches per epoch, since each batch scales $\lambda$ by its share of the data |
 
 * **Momentum is not independent.** Changing `alpha` at fixed `eta` changes the step size. To isolate momentum, set `eta` $= s\,(1-\alpha)$ for a fixed target step $s$.
-* **`lambda` scales with `eta`**, since the decay is $\eta\lambda$ per update: changing the learning rate changes the regularization strength.
+* **`lambda` does not scale with `eta`.** The decay is $w \leftarrow w\,(1-\lambda\,mb/l)$ applied directly to the weights, so changing the learning rate leaves the regularization strength alone.
+
+### Early stopping
+
+The rule is chosen with `--stopping`, with fallbacks when the rule is not applicable:
+
+| Stage | `none` | `patience` | `error` |
+| :--- | :--- | :--- | :--- |
+| Inner folds  | full epochs | no improvement on **validation** error | *no level yet* → falls back to `patience` |
+| Outer retrain | full epochs | no improvement on **training** error | training error reaches the inner folds' validated **training** level |
+| Final retrain (`--dump`) | full epochs | no improvement on **training** error | training error reaches the outer retrain's **training** level |
 
 ### Model selection metric
 
-Selection never compares training losses: they are not on the same scale across loss functions. Classification is ranked on **error rate** (1 − accuracy, the task objective) with **`MSE`** as tie-break. Regression ranks on loss, which is always `MSE` and so already comparable. Both components are fixed metrics computed on every model's predictions, independent of what it was trained with.
+Selection never compares training losses: they are not on the same scale across loss functions. Classification is ranked on **error rate** (1 − accuracy, the task objective) and regression on **`MEE`**, both with **`MSE`** as tie-break.
 
 
 ## CLI Options
 
 | Argument | Description | Default |
 | :--- | :--- | :--- |
-| `dataset` | Dataset type: `xor`, `xor_hot`, `MONK1(_hot)`, `MONK2(_hot)`, `MONK3(_hot)`, `mnist` | *Required* |
+| `dataset` | Dataset type: `xor`, `xor_hot`, `MONK1(_hot)`, `MONK2(_hot)`, `MONK3(_hot)`, `mnist`, `MLCUP` | *Required* |
 | `--grid` | Path to CSV file containing model configurations for grid search | `grids/grid.csv` |
 | `--name` | Name for the project run (creates `artifacts/<name>/` directory) | `model` |
 | `--train` | Flag to execute the training & cross-validation loop | `false` |
@@ -118,8 +128,10 @@ Selection never compares training losses: they are not on the same scale across 
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
 | `--trials` | Number of trials for averaging results with different initializations| `1` |
 | `--epochs` | Maximum number of training epochs per fold | `800` |
+| `--stopping` | Early stopping rule: `none`, `error`, `patience` | `patience` |
 | `--patience` | Fraction of epochs to wait for improvement before early stopping | `0.125` |
 | `--warmup` | Fraction of epochs to warmup the learning rate | `0.1` |
+| `--normalization` | Type of normalization to apply to the dataset: `none`, `minmax`, `max`, `zscore` | `none` |
 | `--train_ratio`| Training set split ratio, exclusive bounds (when $K=1$) | `0.85` |
 | `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |
 | `--shuffle` | Flag to randomly shuffle the dataset before splitting | `false` |

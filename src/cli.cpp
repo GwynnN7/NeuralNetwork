@@ -13,12 +13,12 @@ Args Args::parse(int argc, char* argv[]) {
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800)->check(CLI::PositiveNumber);
     app.add_option("--patience", args.patience, "Patience for early stopping, as a fraction of epochs (0 = disabled)")->default_val(0.125)->check(CLI::Range(0.0, 0.5));
     app.add_option("--warmup", args.warmup, "Learning rate warmup, as a fraction of epochs (0 = disabled)")->default_val(0.1)->check(CLI::Range(0.0, 0.5));
-    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::CONVERGENCE);
+    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::PATIENCE);
 
     // Dataset parameters
     app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Lookup::str_to_dataset, CLI::ignore_case))->required();
-    app.add_option("--train_ratio", args.train_ratio, "Training set ratio, exclusive bounds")->default_val(0.85)->check(CLI::Range(0.0, 1.0).description("in (0,1)"));
-    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0)->check(CLI::Range(0.0, 1.0).description("in (0,1]"));
+    app.add_option("--train_ratio", args.train_ratio, "Training set ratio, exclusive bounds")->default_val(0.85)->check(CLI::Range(0.1, 1.0).description("in (0,1)"));
+    app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0)->check(CLI::Range(0.1, 1.0).description("in (0,1]"));
     app.add_option("--normalization", args.normalization_type, "Normalization type")->transform(CLI::CheckedTransformer(Lookup::str_to_normalization, CLI::ignore_case))->default_val(NormalizationType::NONE);
 
     // Cross-validation parameters

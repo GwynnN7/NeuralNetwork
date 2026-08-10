@@ -25,15 +25,17 @@ class Splitter {
     Splitter(const Dataset& dataset, const Args& args) : dataset(dataset), args(args) {}
 
     OUT std::vector<DataSplit> get(int folds, const std::vector<int>* indices = nullptr) const;
-    OUT DataSplit final_split() const;
 
   private:
     const Dataset& dataset;
     const Args& args;
 
-    // `use_default` to try using the dataset's default train/test splitting
+    // Single holdout split, where the test set is either the default test split or a (random) subset of the dataset
     OUT DataSplit holdout_split(int num_samples, bool use_default) const;
+    // Standard k-fold split, where each fold has approximately the same number of samples
     OUT std::vector<DataSplit> standard_split(int k, int num_samples) const;
+    // Stratified k-fold split, where each fold has approximately the same class distribution
     OUT std::vector<DataSplit> stratified_split(int k, const Matrix& labels) const;
+    // Generates a k-fold split from a given set of indices
     OUT std::vector<DataSplit> kfold(std::vector<int> indices, int k) const;
 };

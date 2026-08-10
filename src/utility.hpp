@@ -15,41 +15,43 @@
 // Root directory for artifacts
 inline std::string MODEL_PATH;
 
-// Flag and signal handler to handle cli early stopping.
+// Flag and signal handler to handle cli early stopping
 inline volatile std::sig_atomic_t early_stop_flag = 0;
 inline void handle_signal(int) {
     early_stop_flag = early_stop_flag ? 0 : 1;
 }
 
-// Shared generator for building outer/inner folds
+// Shared generator for building dataset splits
 inline std::mt19937& get_split_generator() {
     static std::mt19937 split_generator(std::random_device{}());
     return split_generator;
 }
 
-// Shared generator for weight initialization and shuffling
+// Set the random seed for dataset split generation
+inline void set_split_seed(unsigned int seed) {
+    get_split_generator().seed(seed);
+}
+
+// Shared generator for weight initialization and batch shuffling
 inline std::mt19937& get_trial_generator() {
     static std::mt19937 trial_generator(std::random_device{}());
     return trial_generator;
 }
 
-// Set the random seed for reproducibility, mixing trial and fold indices for per-run reproducibility
+// Set the random seed for weight initialization and batch shuffling
 inline void set_trial_seed(unsigned int seed, int trial, int fold) {
     // Mix the seed with trial and fold indices for per-run reproducibility
     std::seed_seq seq{seed, static_cast<unsigned int>(trial), static_cast<unsigned int>(fold)};
     get_trial_generator().seed(seq);
 }
 
-// Set the random seed for reproducibility
-inline void set_split_seed(unsigned int seed) {
-    get_split_generator().seed(seed);
-}
-
-// Get the class index for a given sample from the labels
+// Get the class index of a given sample from the labels
 OUT inline int get_task_class(const Matrix& labels, const Eigen::Index sample_index) {
-    if (labels.rows() == 1) { // Binary classification
+    if (labels.rows() == 1) {
+        // For binary classification threshold at 0.5 to get the class index
         return labels(0, sample_index) >= Scalar(0.5) ? 1 : 0;
-    } else { // Multi-class classification
+    } else {
+        // For one-hot encoding get the index of the maximum value
         Eigen::Index class_index;
         labels.col(sample_index).maxCoeff(&class_index);
         return static_cast<int>(class_index);
@@ -58,33 +60,35 @@ OUT inline int get_task_class(const Matrix& labels, const Eigen::Index sample_in
 
 // Trim leading and trailing whitespace from a string
 OUT inline std::string trim(const std::string& str) {
+    // Find the first and last position that is not a whitespace character
     const auto begin = str.find_first_not_of(" \t\r\n");
+    const auto end = str.find_last_not_of(" \t\r\n");
     if (begin == std::string::npos) {
         return {};
     }
-    const auto end = str.find_last_not_of(" \t\r\n");
+    // And return the substring between them
     return str.substr(begin, end - begin + 1);
 }
 
-// Parse a whole string as a number of type T
+// Parse a string as a number of type T
 template <typename T>
 OUT inline std::optional<T> parse_number(const std::string& str) noexcept {
     T value{};
     const char* last = str.data() + str.size();
     const auto [ptr, err] = std::from_chars(str.data(), last, value);
-    // If the error isn't none or the pointer didn't reach the end of the string
+    // If the error isn't empty or the pointer didn't reach the end of the string
     if (err != std::errc{} || ptr != last) {
         return std::nullopt;
     }
     return value;
 }
 
-// Check if the whole string is a number ("-1" and "1e-3" count, "data_1" does not)
+// Check if the whole string is a number
 OUT inline bool is_number(const std::string& str) {
-    return parse_number<double>(str).has_value();
+    return parse_number<Scalar>(str).has_value();
 }
 
-// Parse a cell, reporting the file and line it came from, and the field name if available
+// Try to parse a cell as type T
 template <typename T>
 OUT T parse_cell(const std::string& cell, const std::string& filename, int line, const std::string& field = "") {
     if (const std::optional<T> value = parse_number<T>(cell)) {
@@ -92,12 +96,6 @@ OUT T parse_cell(const std::string& cell, const std::string& filename, int line,
     }
     throw std::runtime_error(filename + " line " + std::to_string(line) + ": '" + cell + "' is not a valid number" + (field.empty() ? "" : " for " + field));
 }
-
-// Structure to hold a row of CSV with its line number
-struct CsvRow {
-    int line = 0;
-    std::vector<std::string> cells;
-};
 
 // Load a CSV file into a vector of CsvRow, skipping comments and empty lines
 OUT inline std::vector<CsvRow> load_csv(const std::string& filename, char delimiter = ',', bool skip_header = false) {
@@ -124,7 +122,7 @@ OUT inline std::vector<CsvRow> load_csv(const std::string& filename, char delimi
         std::stringstream line_stream(line);
         std::string cell;
         if (delimiter == ' ') {
-            // Split on whitespace for space-delimited files (ignores multiple spaces, tabs, leading/trailing whitespace)
+            // Split on whitespace for space-delimited files
             while (line_stream >> cell) {
                 cells.push_back(cell);
             }

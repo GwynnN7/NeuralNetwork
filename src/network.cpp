@@ -6,10 +6,12 @@
 #include "types.hpp"
 #include "utility.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <memory>
 #include <print>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -31,7 +33,7 @@ Network::Network(const Model& model, const std::vector<Parameters>& params, bool
     buildLayers(model, static_cast<int>(params.front().W.cols()), static_cast<int>(params.back().W.rows()), &params, instantiate_optimizer);
 }
 
-// Function that builds each layer of the network, both loaded and initialized
+// Function that builds each layer of the network, either loaded or initialized
 void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, bool instantiate_optimizer) {
     validateModel(model, num_features, num_classes);
 
@@ -81,8 +83,8 @@ void Network::validateModel(const Model& model, int num_features, int num_classe
     if (model.hidden_activation == ActivationType::SOFTMAX) {
         throw std::invalid_argument("Softmax is not supported as a hidden activation");
     }
-    if (model.task == TaskType::REGRESSION && model.loss_type != LossType::MSE) {
-        throw std::invalid_argument("Regression tasks must use MSE loss");
+    if (model.task == TaskType::REGRESSION && model.loss_type != LossType::MSE && model.loss_type != LossType::MEE) {
+        throw std::invalid_argument("Regression tasks must use MSE or MEE loss");
     }
     if ((model.output_activation == ActivationType::SOFTMAX) != (model.loss_type == LossType::CCE)) {
         throw std::invalid_argument("Softmax activation and CCE loss must be paired together");
@@ -147,26 +149,26 @@ Matrix Network::forward(const Matrix& input) {
     for (auto& layer : layers) {
         out = layer->forward(out, true);
     }
-    return out;
+    // Revert the normalization of the output to return predictions in the original scale
+    return labels_norm.revert(out);
 }
 
 // Training backward pass, propagates the gradient from the error to the first layer.
-// delta_k = (d_k - o_k) f'(net_k) for an output unit and delta_j = (sum_k(delta_k w_kj)) f'(net_j) for a hidden unit
 void Network::backward(const Matrix& output_gradient, Scalar batch_fraction) {
     Matrix gradient = output_gradient;
-    for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
-        const bool is_first_layer = (std::next(it) == layers.rend());
-        gradient = (*it)->backward(gradient, model, batch_fraction, is_first_layer);
+    for (auto& layer : layers | std::views::reverse) {
+        const bool is_first_layer = (&layer == &layers.front());
+        gradient = layer->backward(gradient, model, batch_fraction, is_first_layer);
     }
 }
 
-// Train the network using the dataset provided by the model_set
+// Train the network on the training split and evaluate on the holdout split
 RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
     // Run constants
     const bool is_first_run = (!ctx.in_model_selection || ctx.inner_index == 0) && ctx.trial == 0;
 
     // Logging and metrics variables
-    RunCurves result(model.task);
+    RunCurves curves(model.task);
     int logged_epoch = 0;
 
     // Validate the split
@@ -176,12 +178,12 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     }
 
     // Extract features and labels from the dataset
-    auto train_features = dataset.features(Eigen::placeholders::all, indices.train_indices);
-    auto train_labels = dataset.labels(Eigen::placeholders::all, indices.train_indices);
-    auto test_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
-    auto test_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
+    const auto train_features = dataset.features(Eigen::placeholders::all, indices.train_indices);
+    const auto train_labels = dataset.labels(Eigen::placeholders::all, indices.train_indices);
+    const auto holdout_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
+    const auto holdout_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
 
-    // Fit the normalizers on the training data and apply them to both training and test sets
+    // Fit the normalizers on the training data only to avoid data leakage
     features_norm = Normalizer::fit(ctx.norm_type, train_features);
     // Don't normalize the labels for classification tasks
     labels_norm = model.task == TaskType::REGRESSION ? Normalizer::fit(ctx.norm_type, train_labels) : Normalizer{};
@@ -204,12 +206,12 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
                 log_file << "fold,trial,epoch,train_error,test_error,train_mse,test_mse,train_mee,test_mee,train_acc,test_acc\n";
             }
         }
-        // Sync the logged epoch with the available metrics
-        const int available = static_cast<int>(std::min(result.training.size(), result.holdout.size()));
+        // Write the metrics for each epoch up to the specified epoch
+        const int available = static_cast<int>(std::min(curves.training.size(), curves.holdout.size()));
         const int last = std::min(upto_epoch, available - 1);
         while (logged_epoch <= last) {
-            const Metrics& train = result.training.epochs[logged_epoch];
-            const Metrics& holdout = result.holdout.epochs[logged_epoch];
+            const Metrics& train = curves.training.epochs[logged_epoch];
+            const Metrics& holdout = curves.holdout.epochs[logged_epoch];
             log_file << ctx.inner_index << ","
                      << ctx.trial << ","
                      << logged_epoch << ","
@@ -236,7 +238,18 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     Scalar patience_error = 0.0;
     int epochs_without_improvement = 0;
     bool auto_early_stop_flag = false;
-    const bool use_error_level = ctx.stopping == StoppingRule::ERROR_LEVEL && !ctx.in_model_selection && ctx.target_error;
+
+    // Determine the stopping rule to apply for this run
+    // NONE means training for the full number of epochs, and it is the fallback if the other rules cannot be applied (or if selected)
+    // ERROR means stopping when the target error level is reached, and it is only applied when the target error is available or falls back to PATIENCE
+    // PATIENCE means stopping when the error has not improved for a number of epochs, either on the validation set (in model selection's inner folds) or on the training set (when holdout is the assessment set)
+    const StoppingRule rule = [&ctx] {
+        if (ctx.stopping == StoppingRule::ERROR && ctx.target_error) {
+            return StoppingRule::ERROR;
+        }
+        return (ctx.stopping != StoppingRule::NONE && ctx.patience > 0) ? StoppingRule::PATIENCE : StoppingRule::NONE;
+    }();
+    const int patience_epochs = std::max(1, static_cast<int>(ctx.patience * ctx.epochs));
 
     // Batch index buffers
     std::vector<int> batch_indices;
@@ -256,7 +269,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
         }
 
-        LearningCurve batch_epoch;
+        LearningCurve batch_curve;
         // Loop through each batch in the current epoch
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
             // Determine the starting index and size for the current batch
@@ -269,50 +282,51 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             Matrix batch_labels = dataset.labels(Eigen::placeholders::all, batch_indices);
 
             Matrix batch_prediction = forward(batch_features);
-            batch_epoch.add_batch(batch_labels, labels_norm.revert(batch_prediction), model.loss_type, result.track_accuracy());
+            batch_curve.add_batch(batch_labels, batch_prediction, model.loss_type, curves.track_accuracy());
 
             const Scalar batch_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
-            backward(loss_pair.derivative(labels_norm.apply(batch_labels), batch_prediction), batch_fraction);
+            backward(loss_pair.derivative(labels_norm.apply(batch_labels), labels_norm.apply(batch_prediction)), batch_fraction);
         }
-        result.training.append_epochs(batch_epoch);
-        result.training.normalize_epoch();
+        curves.training.append_epochs(batch_curve);
+        curves.training.normalize_epoch();
 
         // Check for NaN or Inf in the latest training error to stop training
-        if (!std::isfinite(result.training.last_error())) {
-            result.training.invalid = true;
-            result.holdout.invalid = true;
+        if (!std::isfinite(curves.training.last_error())) {
+            curves.training.invalid = true;
+            curves.holdout.invalid = true;
             std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             break;
         }
 
-        // Evaluate the model on the test set and calculate the loss and accuracy
-        const bool predict_test = ((ctx.patience > 0 && ctx.in_model_selection) || ctx.logging) && !indices.test_indices.empty();
-        if (predict_test) {
-            Matrix test_prediction = predict(test_features);
-            result.holdout.append_epoch(test_labels, test_prediction, model.loss_type, result.track_accuracy());
+        // Evaluate the model on the holdout split and calculate the loss and accuracy
+        const bool needs_holdout = (rule == StoppingRule::PATIENCE && ctx.in_model_selection) || ctx.logging;
+        const bool predict_holdout = needs_holdout && !indices.test_indices.empty();
+        if (predict_holdout) {
+            Matrix holdout_prediction = predict(holdout_features);
+            curves.holdout.append_epoch(holdout_labels, holdout_prediction, model.loss_type, curves.track_accuracy());
         }
 
-        // Early stopping logic based on the patience parameter
-        // In model selection the holdout split is the validation set, so it is used to determine when to stop
-        // Outside model selection, either the training error or the validated best error is used because the holdout split is the test set
-        if (use_error_level) {
-            if (result.training.last_error() <= *ctx.target_error) {
-                result.best_epoch = i;
+        // Early stopping logic
+        if (rule == StoppingRule::ERROR) {
+            // Stop training if the training error has reached the target error level
+            if (curves.training.last_error() <= *ctx.target_error) {
                 auto_early_stop_flag = true;
             }
-        } else if (ctx.patience > 0) {
-            Scalar current_error = ctx.in_model_selection ? result.holdout.last_error() : result.training.last_error();
+        } else if (rule == StoppingRule::PATIENCE) {
+            // In model selection the holdout is the validation set, so it can be used to check for improvements
+            // Everywhere else the holdout is the assessment set and can't be used, so the training error is used to check for convergence
+            Scalar current_error = ctx.in_model_selection ? curves.holdout.last_error() : curves.training.last_error();
             // If the current error is better than the best error so far (with tolerance), reset the patience counter and save the model parameters
             if (i == 0 || current_error < patience_error - std::abs(patience_error) * ES_TOLERANCE) {
                 epochs_without_improvement = 0;
                 patience_error = current_error;
-                result.best_epoch = i;
+                curves.best_epoch = i;
                 snapshotParameters(); // Save the current parameters as the best epoch
             } else {
                 epochs_without_improvement++;
             }
 
-            if (epochs_without_improvement >= static_cast<int>(ctx.patience * ctx.epochs)) {
+            if (epochs_without_improvement >= patience_epochs) {
                 auto_early_stop_flag = true;
             }
         }
@@ -333,11 +347,11 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     }
 
     // Roll back to the parameters of the best epoch
-    if (ctx.patience > 0 && !use_error_level) {
+    if (rule == StoppingRule::PATIENCE) {
         restoreParameters();
     } else {
-        // Without early stopping nothing was snapshotted, so the run ends on its final epoch
-        result.best_epoch = static_cast<int>(result.training.size()) - 1;
+        // The other rules never snapshot, so the run simply ends on the last epoch it reached
+        curves.best_epoch = std::max(0, static_cast<int>(curves.training.size()) - 1);
     }
 
     // Write final epochs to the log file
@@ -351,5 +365,5 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     model.eta = initial_eta; // Restore the configured learning rate after decay
     early_stop_flag = 0;     // Reset the early stop flag for the next fold
 
-    return result;
+    return curves;
 }

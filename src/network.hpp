@@ -16,14 +16,14 @@ struct DataSplit;
 
 // Context for a training run
 struct TrainContext {
-    int trial = 0;
-    int epochs = 0;
+    int trial = 0;         // Current trial number
+    int epochs = 0;        // Number of epochs to train for
     Scalar patience = 0.0; // Patience for early stopping
     Scalar warmup = 0.0;   // Warmup ratio for learning rate
 
     NormalizationType norm_type = NormalizationType::NONE; // Normalization method
-    StoppingRule stopping = StoppingRule::CONVERGENCE;     // Early stopping rule when there is not validation set to use
-    std::optional<Scalar> target_error = std::nullopt;     // Target error for early stopping when using the ERROR_LEVEL rule
+    StoppingRule stopping = StoppingRule::PATIENCE;        // Early stopping rule requested for this run
+    std::optional<Scalar> target_error = std::nullopt;     // Training error level to stop at, only set when the ERROR rule has one to aim for
 
     int model_id = 0;    // Grid-search id of the model being trained
     int outer_index = 0; // Outer cross-validation fold
@@ -44,9 +44,11 @@ struct TrainContext {
 
 class Network {
   private:
+    // The layers of the network (DenseLayer and ActivationLayer)
     std::vector<std::unique_ptr<Layer>> layers;
     LossPair loss_pair;
 
+    // Normalizers fitted to the training data for features and labels
     Normalizer features_norm, labels_norm;
 
     void setLossFunction(LossType lossType);
