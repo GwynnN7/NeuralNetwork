@@ -168,7 +168,7 @@ Matrix load_xor(const std::string& filename, Scalar dataset_ratio) {
     const int actual_rows = static_cast<int>(rows.size());
     const int total_rows = actual_rows * MULTIPLIER;
     const int kept_rows = sample_subset(total_rows, dataset_ratio);
-    return to_matrix(flat, actual_rows, XOR_NUM_COLS).replicate(1, MULTIPLIER).topRows(kept_rows);
+    return to_matrix(flat, actual_rows, XOR_NUM_COLS).replicate(MULTIPLIER, 1).topRows(kept_rows);
 }
 } // namespace XOR
 
