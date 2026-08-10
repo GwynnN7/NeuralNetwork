@@ -16,56 +16,49 @@ id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
 7,128,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
 
 # --- C. Depth ---------------------------------------------------------------
-8,64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-9,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-10,64-64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-11,128-64-32,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+8,64-64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+9,128-64-32,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
 
 # --- D. Weight Decay --------------------------------------------------------
-12,64-64,tanh,linear,glorot,adam,mse,0,0.003,0,0.0,0.9
-13,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-5,0.0,0.9
-14,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-4,0.0,0.9
-15,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-16,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
-17,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-3,0.0,0.9
-18,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-2,0.0,0.9
+10,64-64,tanh,linear,glorot,adam,mse,0,0.003,0,0.0,0.9
+11,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-5,0.0,0.9
+12,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-4,0.0,0.9
+13,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
+14,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-3,0.0,0.9
+15,64-64,tanh,linear,glorot,adam,mse,0,0.003,1e-2,0.0,0.9
 
 # --- E. Capacity/Decay Trade-off --------------------------------------------
-19,32-32,tanh,linear,glorot,adam,mse,0,0.003,1e-4,0.0,0.9
-20,32-32,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
-21,128-128,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-22,128-128,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
+16,32-32,tanh,linear,glorot,adam,mse,0,0.003,1e-4,0.0,0.9
+17,32-32,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
+18,128-128,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+19,128-128,tanh,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
 
 # --- F. Hidden Activation ---------------------------------------------------
-23,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-24,64-64,relu,linear,he,adam,mse,0,0.003,3e-4,0.0,0.9
-25,64-64,sigmoid,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-26,64-64,linear,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+20,64-64,relu,linear,he,adam,mse,0,0.003,3e-4,0.0,0.9
+21,64-64,sigmoid,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+22,64-64,linear,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
 
 # --- G. Weight Initialization -----------------------------------------------
-27,64-64,tanh,linear,random,adam,mse,0,0.003,3e-4,0.0,0.9
-28,64-64,tanh,linear,lecun,adam,mse,0,0.003,3e-4,0.0,0.9
-29,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-30,64-64,tanh,linear,he,adam,mse,0,0.003,3e-4,0.0,0.9
+23,64-64,tanh,linear,random,adam,mse,0,0.003,3e-4,0.0,0.9
+24,64-64,tanh,linear,lecun,adam,mse,0,0.003,3e-4,0.0,0.9
+25,64-64,tanh,linear,he,adam,mse,0,0.003,3e-4,0.0,0.9
 
-# --- H. Optimizer -----------------------------------------------------------
-31,64-64,tanh,linear,glorot,sgd,mse,0,0.05,3e-4,0.9,0.9
-32,64-64,tanh,linear,glorot,rmsprop,mse,0,0.003,3e-4,0.9,0.9
-33,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+# --- H. RMSProp Decay Rate --------------------------------------------------
+26,64-64,tanh,linear,glorot,rmsprop,mse,0,0.003,3e-4,0.5,0.9
+27,64-64,tanh,linear,glorot,rmsprop,mse,0,0.003,3e-4,0.9,0.9
+28,64-64,tanh,linear,glorot,rmsprop,mse,0,0.003,3e-4,0.99,0.9
 
 # --- I. SGD Momentum --------------------------------------------------------
-34,64-64,tanh,linear,glorot,sgd,mse,0,0.5,3e-4,0.0,0.9
-35,64-64,tanh,linear,glorot,sgd,mse,0,0.25,3e-4,0.5,0.9
-36,64-64,tanh,linear,glorot,sgd,mse,0,0.05,3e-4,0.9,0.9
-37,64-64,tanh,linear,glorot,sgd,mse,0,0.025,3e-4,0.95,0.9
+29,64-64,tanh,linear,glorot,sgd,mse,0,0.5,3e-4,0.0,0.9
+30,64-64,tanh,linear,glorot,sgd,mse,0,0.25,3e-4,0.5,0.9
+31,64-64,tanh,linear,glorot,sgd,mse,0,0.05,3e-4,0.9,0.9
+32,64-64,tanh,linear,glorot,sgd,mse,0,0.025,3e-4,0.95,0.9
 
 # --- J. Adam Beta1 ----------------------------------------------------------
-38,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.0
-39,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-40,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.99
+33,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.0
+34,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.99
 
 # --- K. Batch Size ----------------------------------------------------------
-41,64-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
-42,64-64,tanh,linear,glorot,adam,mse,128,0.003,3e-4,0.0,0.9
-43,64-64,tanh,linear,glorot,adam,mse,32,0.003,3e-4,0.0,0.9
-44,64-64,tanh,linear,glorot,adam,mse,8,0.003,3e-4,0.0,0.9
+35,64-64,tanh,linear,glorot,adam,mse,128,0.003,3e-4,0.0,0.9
+36,64-64,tanh,linear,glorot,adam,mse,32,0.003,3e-4,0.0,0.9
+37,64-64,tanh,linear,glorot,adam,mse,8,0.003,3e-4,0.0,0.9

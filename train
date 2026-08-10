@@ -21,7 +21,7 @@ WARMUP=0.1 # Fraction of epochs to warmup the learning rate
 INNER_K=5 # Number of folds for inner cross-validation
 OUTER_K=1 # Holdout to use predefined train/test split if available
 
-STOPPING="convergence" # Stopping rule for final retrain: convergence, best, last
+STOPPING="convergence" # Stopping rule for final retrain: none, error, patience
 NORMALIZATION="minmax" # Normalization method: none, minmax, max, zscore
 DATASET_RATIO=1.0 # Fraction of the dataset to use
 TRAIN_RATIO=0.8 # Fallback for datasets that don't have a predefined train/test split
