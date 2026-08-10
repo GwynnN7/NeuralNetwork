@@ -12,20 +12,40 @@ if [ ! -n "$1" ]; then
 fi
 
 # --------------------
-# Training parameters
+# Default training parameters
 
 TRIALS=5 # Number of trials to run
-EPOCHS=600 # Max number of epochs, actually handled by linear search and early stopping
-PATIENCE=0.125 # Fraction of epochs to wait for improvement before early stopping
-WARMUP=0.1 # Fraction of epochs to warmup the learning rate
+EPOCHS=600 # Max number of epochs
+PATIENCE=75 # Epochs without improvement before early stopping
+WARMUP=50 # Epochs spent warming the learning rate up
 INNER_K=5 # Number of folds for inner cross-validation
 OUTER_K=5 # Holdout to use predefined train/test split if available
 
-STOPPING="patience" # Stopping rule for final retrain: none, error, patience
+STOPPING="error" # Stopping rule: none, error, patience
 NORMALIZATION="minmax" # Normalization method: none, minmax, max, zscore
 DATASET_RATIO=1.0 # Fraction of the dataset to use
 TRAIN_RATIO=0.8 # Fallback for datasets that don't have a predefined train/test split
 SEED=42 # Random seed for reproducibility
+
+# Per-dataset overrides
+case "$1" in
+monk*)
+    EPOCHS=600
+    OUTER_K=1
+    ;;
+xor*)
+    EPOCHS=600
+    ;;
+mlcup)
+    EPOCHS=12000
+    ;;
+mnist)
+    EPOCHS=300
+    TRIALS=3
+    DATASET_RATIO=0.5
+    OUTER_K=3
+    ;;
+esac
 
 # --------------------
 
@@ -62,7 +82,7 @@ $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --inner-k $INNER_K --outer-k $OUTER_K \
     --epochs $EPOCHS --patience $PATIENCE --warmup $WARMUP \
     --normalization $NORMALIZATION --stopping $STOPPING \
-    --dump >> logs/"$1".log &
+    --dump >> logs/"$NAME".log &
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &

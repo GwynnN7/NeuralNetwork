@@ -65,11 +65,13 @@ vcpkg_installed/
 *.dwo
 
 # test output & cache
+__pycache__/
 Testing/
 testing/
 .cache/
 artifacts/
 logs/
+grids/*_test.csv
 
 # VSCode
 .vscode/

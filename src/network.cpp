@@ -229,7 +229,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     };
 
     // Learning rate variables for warmup and decay
-    const int warmup_epochs = std::clamp(static_cast<int>(ctx.epochs * ctx.warmup), 0, std::max(0, ctx.epochs - 1)); // Number of epochs for the warmup
+    const int warmup_epochs = std::clamp(ctx.warmup, 0, std::max(0, ctx.epochs - 1)); // Number of epochs for the warmup
     const Scalar initial_eta = model.eta;
     const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;                                            // Target learning rate after decay
     const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
@@ -249,7 +249,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         }
         return (ctx.stopping != StoppingRule::NONE && ctx.patience > 0) ? StoppingRule::PATIENCE : StoppingRule::NONE;
     }();
-    const int patience_epochs = std::max(1, static_cast<int>(ctx.patience * ctx.epochs));
+    const int patience_epochs = std::clamp(ctx.patience, 1, std::max(1, ctx.epochs));
 
     // Batch index buffers
     std::vector<int> batch_indices;
@@ -268,6 +268,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i - warmup_epochs) / tau);
             model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
         }
+        model.eta_scale = model.eta / initial_eta;
 
         LearningCurve batch_curve;
         // Loop through each batch in the current epoch
@@ -362,8 +363,9 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         }
     }
 
-    model.eta = initial_eta; // Restore the configured learning rate after decay
-    early_stop_flag = 0;     // Reset the early stop flag for the next fold
+    model.eta = initial_eta;     // Restore the configured learning rate after decay
+    model.eta_scale = Scalar(1); // Restore the learning rate factor
+    early_stop_flag = 0;         // Reset the early stop flag for the next fold
 
     return curves;
 }

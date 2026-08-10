@@ -5,8 +5,8 @@
 struct Args {
     // Epochs parameters
     int epochs;
-    Scalar patience;
-    Scalar warmup;
+    int patience;
+    int warmup;
     StoppingRule stopping_rule;
 
     // Dataset parameters

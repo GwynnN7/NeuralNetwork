@@ -11,9 +11,9 @@ Args Args::parse(int argc, char* argv[]) {
 
     // Epochs parameters
     app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800)->check(CLI::PositiveNumber);
-    app.add_option("--patience", args.patience, "Patience for early stopping, as a fraction of epochs (0 = disabled)")->default_val(0.125)->check(CLI::Range(0.0, 0.5));
-    app.add_option("--warmup", args.warmup, "Learning rate warmup, as a fraction of epochs (0 = disabled)")->default_val(0.1)->check(CLI::Range(0.0, 0.5));
-    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::PATIENCE);
+    app.add_option("--patience", args.patience, "Epochs without improvement before early stopping (0 = disabled)")->default_val(75)->check(CLI::NonNegativeNumber);
+    app.add_option("--warmup", args.warmup, "Epochs spent increasing the learning rate (0 = disabled)")->default_val(50)->check(CLI::NonNegativeNumber);
+    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::ERROR);
 
     // Dataset parameters
     app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Lookup::str_to_dataset, CLI::ignore_case))->required();

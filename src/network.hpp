@@ -16,10 +16,10 @@ struct DataSplit;
 
 // Context for a training run
 struct TrainContext {
-    int trial = 0;         // Current trial number
-    int epochs = 0;        // Number of epochs to train for
-    Scalar patience = 0.0; // Patience for early stopping
-    Scalar warmup = 0.0;   // Warmup ratio for learning rate
+    int trial = 0;    // Current trial number
+    int epochs = 0;   // Number of epochs to train for
+    int patience = 0; // Epochs without improvement before early stopping
+    int warmup = 0;   // Epochs spent increasing the learning rate
 
     NormalizationType norm_type = NormalizationType::NONE; // Normalization method
     StoppingRule stopping = StoppingRule::PATIENCE;        // Early stopping rule requested for this run
