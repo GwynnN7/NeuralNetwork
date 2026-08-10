@@ -16,7 +16,7 @@ METRICS = ["train_error", "test_error", "train_mse", "test_mse",
            "train_mee", "test_mee", "train_acc", "test_acc"]
 
 VIEWS = {
-    "Error": ("error", "Error", (0, None), "{:.3f}", "upper right"),
+    "Loss": ("error", "Loss", (0, None), "{:.3f}", "upper right"),
     "MSE": ("mse", "MSE", (0, None), "{:.3f}", "upper right"),
     "MEE": ("mee", "MEE", (0, None), "{:.3f}", "upper right"),
     "Accuracy": ("acc", "Accuracy (%)", (None, 101), "{:.1f}%", "lower right"),
@@ -73,7 +73,8 @@ class Viewer:
         self.ax = self.fig.add_axes([0.09, 0.16, 0.885, 0.75])
         self.outers, self.models, self.selected = [], {}, {}
         self.outer_i, self.model_i, self.log_scale = 0, 0, False
-        self.view, self.classification, self.syncing = "Error", True, False
+        self.view, self.classification, self.syncing = "Loss", True, False
+        self.user_choice = False
 
         def button(x, label, action, **kw):
             b = Button(plt.axes([x, 0.04, 0.11, 0.05]), label, **kw)
@@ -125,6 +126,7 @@ class Viewer:
             self.select_view(self.view)
             return
         self.view = label
+        self.user_choice = True
         self.refresh()
 
     def scan(self):
@@ -145,7 +147,7 @@ class Viewer:
 
     def detect_task(self, frames):
         self.classification = any(f[c].abs().max() > 0 for f in frames for c in ("train_acc", "test_acc"))
-        if not self.classification and self.view in CLASSIFICATION_ONLY:
+        if not self.classification and (self.view in CLASSIFICATION_ONLY or not self.user_choice):
             self.select_view("MEE")
         for text in self.radio.labels:
             greyed = not self.classification and text.get_text() in CLASSIFICATION_ONLY
@@ -167,7 +169,13 @@ class Viewer:
         self.ax.set_title(f"{self.view} (log scale)" if self.log_scale else self.view, fontsize=11)
         if self.log_scale:
             self.ax.set_yscale("log", nonpositive="mask")
-            self.ax.autoscale(axis="y")
+            values = [v for line in self.ax.get_lines()
+                      if line.get_label() and not line.get_label().startswith("_")
+                      for v in line.get_ydata() if v > 0]
+            if values:
+                self.ax.set_ylim(min(values) * 0.7, max(values) * 1.4)
+            else:
+                self.ax.autoscale(axis="y")
         else:
             self.ax.set_yscale("linear")
             if bottom is not None:
