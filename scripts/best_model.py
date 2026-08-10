@@ -40,14 +40,20 @@ plt.figure(figsize=(10, 6))
 bars = plt.bar(labels, results["value"], yerr=results["sd"], capsize=6,
                color="#4C72B0", edgecolor="black", linewidth=1.2, alpha=0.85)
 
-fmt = "{:.1f}%" if classification else "{:.3f}"
+def format_value(value):
+    if classification:
+        return f"{value:.1f}%"
+    if 0 < abs(value) < 1e-3:
+        return f"{value:.2e}"
+    else:
+        return f"{value:.3f}"
 for bar, model, value, sd in zip(bars, results["model"], results["value"], results["sd"]):
-    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + sd, f"Model {model}\n" + fmt.format(value),
+    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + sd, f"Model {model}\n" + format_value(value),
              ha="center", va="bottom", fontweight="bold", fontsize=10)
 
 average = results["value"].mean()
 plt.axhline(average, color="#C44E52", linestyle="--", linewidth=2.5,
-            label=("Average: " + fmt).format(average))
+            label=("Average: " + format_value(average)))
 
 headroom = 1.18 * (results["value"] + results["sd"]).max()
 plt.ylim(0, 115 if classification else headroom)

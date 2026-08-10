@@ -9,6 +9,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, RadioButtons
 
 FOLDER = f"artifacts/{sys.argv[1] if len(sys.argv) > 1 else 'model'}"
+NAME = sys.argv[1] if len(sys.argv) > 1 else "model"
 INNER = re.compile(r"^outer(\d+)_inner_m(\d+)\.csv$")
 OUTER = re.compile(r"^outer(\d+)_m(\d+)\.csv$")
 METRICS = ["train_error", "test_error", "train_mse", "test_mse",
@@ -217,6 +218,7 @@ class Viewer:
             trials = f" ({runs.trials} Trials)" if runs.trials > 1 else ""
             title = f"Best Model Evaluation{trials}:  {header}"
 
+        title = f"{NAME.upper()}: {title}"
         self.style(title)
 
 

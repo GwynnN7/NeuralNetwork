@@ -69,6 +69,7 @@ Testing/
 testing/
 .cache/
 artifacts/
+logs/
 
 # VSCode
 .vscode/
