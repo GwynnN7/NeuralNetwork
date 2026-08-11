@@ -82,7 +82,7 @@ block of models is testing — and a single model can be commented out without d
 **`init` should match `hidden`.** `He` is derived for `ReLU`; `Glorot` and `LeCun` are derived for symmetric saturating
 activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 
-**`lambda` is decoupled from the gradient** and applied directly to the weights. Each mini-batch applies only its own fraction of it, and it follows the learning rate's schedule.
+**`lambda` is independent of `eta` and `alpha`** and applied directly to the weights. Each mini-batch applies only its own fraction, $\lambda\,(mb/l)$.
 
 **`activation` + `loss` constraints:** `Softmax` output requires `CCE` loss and vice versa; `BCE` requires a `Sigmoid` output; regression tasks require `MSE` or `MEE`; `Softmax` is not valid as a hidden activation.
 
@@ -95,16 +95,17 @@ activations (`Tanh`, `Sigmoid`). `Random` is `U(-1,1)` *regardless of fan-in*.
 | SGD step | $\eta / (1-\alpha)$ | Effective step size increases with high $\alpha$ |
 | RMSProp step | $\eta / \sqrt{1-\alpha^{t}} \rightarrow \eta$ | No bias correction, so at low $t$ effective step is increased with high $\alpha$ |
 | Adam step | $\approx \eta$ | Bias correction cancels the $\beta_1$ amplification |
-| Decay per epoch | $(1-\lambda\,(\eta_t/\eta_0)/B)^{B} \approx 1-\lambda\,\eta_t/\eta_0$ | Independent of $B$ = batches per epoch, and shrinks with the learning rate schedule |
+| Decay per epoch | $(1-\lambda/B)^{B} \approx 1-\lambda$ | Independent of $B$ = batches per epoch, since each batch applies its own share |
 
 * **Momentum is not independent.** Changing `alpha` at fixed `eta` changes the step size. To isolate momentum, set `eta` $= s\,(1-\alpha)$ for a fixed target step $s$.
-* **`lambda` follows the learning rate schedule.** The decay is $w \leftarrow w\,(1-\lambda\,(\eta_t/\eta_0)\,mb/l)$. Held constant instead it grows too large as the learning rate decays.
+* **`lambda` does not scale with `eta`.** The decay is $w \leftarrow w\,(1-\lambda\,mb/l)$, so the three hyperparameters stay separable and can be searched independently.
 
 ### Early stopping
 
 The rule is chosen with `--stopping`, with fallbacks when the rule is not applicable:
 
-`--patience` and `--warmup` are absolute epoch counts, while the learning rate decay is a fraction of the run.
+`--updates`, `--patience` and `--warmup` are counted in **weight updates**, not epochs. One epoch is a single
+update at full batch, but $\lceil l/mb \rceil$ of them in mini-batch.
 
 | Stage | `none` | `patience` | `error` |
 | :--- | :--- | :--- | :--- |
@@ -129,10 +130,10 @@ Selection never compares training losses: they are not on the same scale across 
 | `--inner-k` | Number of folds for inner cross-validation (Model Selection) | `1` |
 | `--outer-k` | Number of folds for outer cross-validation (Model Evaluation) | `1` |
 | `--trials` | Number of trials for averaging results with different initializations| `1` |
-| `--epochs` | Maximum number of training epochs per fold | `800` |
+| `--updates` | Number of weight updates per run, converted to epochs per model | `800` |
 | `--stopping` | Early stopping rule: `none`, `error`, `patience` | `error` |
-| `--patience` | Epochs without improvement before early stopping | `75` |
-| `--warmup` | Epochs spent warming the learning rate up | `50` |
+| `--patience` | Weight updates without improvement before early stopping | `75` |
+| `--warmup` | Weight updates spent warming the learning rate up | `50` |
 | `--normalization` | Type of normalization to apply to the dataset: `none`, `minmax`, `max`, `zscore` | `none` |
 | `--train_ratio`| Training set split ratio, exclusive bounds (when $K=1$) | `0.85` |
 | `--dataset_ratio`| Subset fraction of dataset to load (for fast prototyping) | `1.0` |

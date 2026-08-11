@@ -9,9 +9,8 @@ class Optimizer {
   protected:
     // Apply the update each subclass computed and add weight decay regularization directly to the weights
     void optimize(Parameters& params, const Parameters& updates, const Model& model, Scalar batch_fraction) {
-        // Lambda is decoupled from the gradient and the learning rate, and each mini-batch applies only its own fraction of it to keep the effective regularization consistent across batch sizes
-        // However, it follows the learning rate scaling (warmup and decay). Otherwise, the decay would become increasingly stronger than the decayed learning rate, and the weights would shrink too much
-        const Scalar effective_lambda = model.lambda * batch_fraction * model.eta_scale;
+        // Lambda is independent of eta and alpha, and each mini-batch applies only its own fraction of it (mb / l) to keep the effective regularization consistent across batch sizes
+        const Scalar effective_lambda = model.lambda * batch_fraction;
         if (model.lambda > 0) {
             params.W *= (Scalar(1) - effective_lambda);
         }

@@ -108,9 +108,10 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
     return grid_search;
 }
 
-void Model::print() const {
+void Model::print(int epochs) const {
     std::println("\nTraining Configuration:");
 
+    std::println(" • {:<25}{}", "Epochs:", epochs);
     std::println(" • {:<25}{}", "Batch Size:", batch_size);
     std::println(" • {:<25}{}", "Learning Rate:", eta);
     std::println(" • {:<25}{}", "Regularization:", lambda);

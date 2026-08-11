@@ -49,7 +49,7 @@ void train(const Dataset& dataset, const Args& args) {
         for (size_t m = 0; in_model_selection && m < grid_search.size(); ++m) {
             // Get next model and print its configuration
             const Model& grid_model = grid_search[m];
-            grid_model.print();
+            grid_model.print(epochs_for(args.updates, grid_model.batch_size, static_cast<int>(inner_folds.front().train_indices.size())));
 
             // Run the model on each inner fold and collect scores for selection, and summary for statistics
             std::vector<SelectionScore> model_scores;
@@ -94,7 +94,7 @@ void train(const Dataset& dataset, const Args& args) {
         if (in_model_selection) {
             std::println("\nRetraining the best model for Outer Fold {}: Model {}", outer_index, best_models[i].id);
         }
-        best_models[i].print();
+        best_models[i].print(epochs_for(args.updates, best_models[i].batch_size, static_cast<int>(outer_folds[i].train_indices.size())));
 
         // If the ERROR rule is used and model selection was run, the retrain will stop at the validated training error level of the inner fold that selected the best model
         // If model selection was not run, or the PATIENCE rule is used, the retrain will stop when the training error converges

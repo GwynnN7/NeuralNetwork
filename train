@@ -1,8 +1,10 @@
 #!/bin/bash
 
 RELEASE_DIR="build/Release"
+LOGS_DIR="logs"
 
 mkdir -p $RELEASE_DIR
+mkdir -p $LOGS_DIR
 cmake -B $RELEASE_DIR -DCMAKE_BUILD_TYPE=Release
 cmake --build $RELEASE_DIR -j 6 || { echo -e "\n[Error] Build failed"; exit 1; }
 
@@ -15,13 +17,13 @@ fi
 # Default training parameters
 
 TRIALS=5 # Number of trials to run
-EPOCHS=600 # Max number of epochs
-PATIENCE=75 # Epochs without improvement before early stopping
-WARMUP=50 # Epochs spent warming the learning rate up
+UPDATES=600 # Number of weight updates per run
+PATIENCE=75 # Weight updates without improvement before early stopping
+WARMUP=50 # Weight updates spent increasing the learning rate
 INNER_K=5 # Number of folds for inner cross-validation
 OUTER_K=5 # Holdout to use predefined train/test split if available
 
-STOPPING="error" # Stopping rule: none, error, patience
+STOPPING="patience" # Stopping rule: none, error, patience
 NORMALIZATION="minmax" # Normalization method: none, minmax, max, zscore
 DATASET_RATIO=1.0 # Fraction of the dataset to use
 TRAIN_RATIO=0.8 # Fallback for datasets that don't have a predefined train/test split
@@ -30,17 +32,20 @@ SEED=42 # Random seed for reproducibility
 # Per-dataset overrides
 case "$1" in
 monk*)
-    EPOCHS=600
-    OUTER_K=1
+    UPDATES=600
+    PATIENCE=75
+    OUTER_K=1 # Use predefined train/test split
     ;;
 xor*)
-    EPOCHS=600
+    UPDATES=600
     ;;
 mlcup)
-    EPOCHS=12000
+    UPDATES=12000
+    PATIENCE=1500
     ;;
 mnist)
-    EPOCHS=300
+    UPDATES=82000 # 82000 updates is about 300 epochs at batch 128 here
+    PATIENCE=3000
     TRIALS=3
     DATASET_RATIO=0.5
     OUTER_K=3
@@ -80,9 +85,9 @@ $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --train --shuffle --seed $SEED --trials $TRIALS \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K \
-    --epochs $EPOCHS --patience $PATIENCE --warmup $WARMUP \
+    --updates $UPDATES --patience $PATIENCE --warmup $WARMUP \
     --normalization $NORMALIZATION --stopping $STOPPING \
-    --dump >> logs/"$NAME".log &
+    --dump >> $LOGS_DIR/"$NAME".log &
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &

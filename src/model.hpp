@@ -29,12 +29,11 @@ struct Model {
 
     // Runtime parameters, not part of model selection
     TaskType task = TaskType::REGRESSION;
-    Scalar eta_scale = 1.0;                         // Learning rate scale that changes with warmup and decay
     SelectionScore score = {};                      // Score of the model for model selection
     SplitSummary summary = {};                      // Summary of the model's performance across all folds and trials
     std::optional<SplitSummary> final_summary = {}; // Summary of the model's performance when (re)trained on the entire training set of the outer fold (either won model selection or was the only model available)
 
-    void print() const;
+    void print(int epochs = 0) const;
     OUT static std::vector<Model> load_grid_search(const std::string& filename);
 };
 

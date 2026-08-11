@@ -10,10 +10,10 @@ Args Args::parse(int argc, char* argv[]) {
     CLI::App app{"Neural Network Training"};
 
     // Epochs parameters
-    app.add_option("--epochs", args.epochs, "Number of epochs")->default_val(800)->check(CLI::PositiveNumber);
-    app.add_option("--patience", args.patience, "Epochs without improvement before early stopping (0 = disabled)")->default_val(75)->check(CLI::NonNegativeNumber);
-    app.add_option("--warmup", args.warmup, "Epochs spent increasing the learning rate (0 = disabled)")->default_val(50)->check(CLI::NonNegativeNumber);
-    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::ERROR);
+    app.add_option("--updates", args.updates, "Number of weight updates per run")->default_val(800)->check(CLI::PositiveNumber);
+    app.add_option("--patience", args.patience, "Weight updates without improvement before early stopping (0 = disabled)")->default_val(75)->check(CLI::NonNegativeNumber);
+    app.add_option("--warmup", args.warmup, "Weight updates spent increasing the learning rate (0 = disabled)")->default_val(50)->check(CLI::NonNegativeNumber);
+    app.add_option("--stopping", args.stopping_rule, "Early stopping rule")->transform(CLI::CheckedTransformer(Lookup::str_to_stopping, CLI::ignore_case))->default_val(StoppingRule::PATIENCE);
 
     // Dataset parameters
     app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Lookup::str_to_dataset, CLI::ignore_case))->required();

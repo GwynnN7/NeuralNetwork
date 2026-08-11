@@ -228,11 +228,14 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         log_file.flush();
     };
 
-    // Learning rate variables for warmup and decay
-    const int warmup_epochs = std::clamp(ctx.warmup, 0, std::max(0, ctx.epochs - 1)); // Number of epochs for the warmup
+    // Epochs and learning rate variables (warmup and decay)
+    // The number of epochs is derived from the number of updates and the batch size, since smaller batch sizes result in more weight updates per epoch
+    // This allows warmup, decay and early stopping to be applied consistently and meaningfully across different batch sizes
+    const int epochs = epochs_for(ctx.updates, model.batch_size, input_size);
+    const int warmup_epochs = std::clamp(ctx.warmup / num_batches, 0, std::max(0, epochs - 1));
     const Scalar initial_eta = model.eta;
-    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;                                            // Target learning rate after decay
-    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(ctx.epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
+    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;                                        // Target learning rate after decay
+    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
 
     // Early Stopping variables
     Scalar patience_error = 0.0;
@@ -249,14 +252,15 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         }
         return (ctx.stopping != StoppingRule::NONE && ctx.patience > 0) ? StoppingRule::PATIENCE : StoppingRule::NONE;
     }();
-    const int patience_epochs = std::clamp(ctx.patience, 1, std::max(1, ctx.epochs));
+    // To make the stopping rules consistent across different batch sizes, the patience is converted from weight updates to epochs, since smaller batch sizes result in more weight updates per epoch
+    const int patience_epochs = std::clamp(ctx.patience / num_batches, 1, std::max(1, epochs));
 
     // Batch index buffers
     std::vector<int> batch_indices;
     batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
 
-    for (int i = 0; i < ctx.epochs; i++) {
+    for (int i = 0; i < epochs; i++) {
         std::ranges::shuffle(epoch_indices, get_trial_generator());
 
         // Update the learning rate
@@ -268,7 +272,6 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i - warmup_epochs) / tau);
             model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
         }
-        model.eta_scale = model.eta / initial_eta;
 
         LearningCurve batch_curve;
         // Loop through each batch in the current epoch
@@ -333,7 +336,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         }
 
         // Log the metrics for the current epoch to the log file
-        if (ctx.logging && (i % LOG_FREQ == 0 || i == ctx.epochs - 1)) {
+        if (ctx.logging && (i % LOG_FREQ == 0 || i == epochs - 1)) {
             flush_log(i);
         }
 
@@ -357,15 +360,14 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
     // Write final epochs to the log file
     if (ctx.logging) {
-        flush_log(ctx.epochs - 1);
+        flush_log(epochs - 1);
         if (log_file.is_open()) {
             log_file.close();
         }
     }
 
-    model.eta = initial_eta;     // Restore the configured learning rate after decay
-    model.eta_scale = Scalar(1); // Restore the learning rate factor
-    early_stop_flag = 0;         // Reset the early stop flag for the next fold
+    model.eta = initial_eta; // Restore the configured learning rate after decay
+    early_stop_flag = 0;     // Reset the early stop flag for the next fold
 
     return curves;
 }

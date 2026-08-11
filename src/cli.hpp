@@ -4,7 +4,7 @@
 
 struct Args {
     // Epochs parameters
-    int epochs;
+    int updates;
     int patience;
     int warmup;
     StoppingRule stopping_rule;

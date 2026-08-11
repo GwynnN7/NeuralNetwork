@@ -17,9 +17,9 @@ struct DataSplit;
 // Context for a training run
 struct TrainContext {
     int trial = 0;    // Current trial number
-    int epochs = 0;   // Number of epochs to train for
-    int patience = 0; // Epochs without improvement before early stopping
-    int warmup = 0;   // Epochs spent increasing the learning rate
+    int updates = 0;  // Number of weight updates, converted to epochs based on the number of batches
+    int patience = 0; // Updates without improvement before early stopping
+    int warmup = 0;   // Updates spent increasing the learning rate
 
     NormalizationType norm_type = NormalizationType::NONE; // Normalization method
     StoppingRule stopping = StoppingRule::PATIENCE;        // Early stopping rule requested for this run
@@ -34,7 +34,7 @@ struct TrainContext {
 
     static TrainContext from_args(const Args& args) {
         return TrainContext{
-            .epochs = args.epochs,
+            .updates = args.updates,
             .patience = args.patience,
             .warmup = args.warmup,
             .norm_type = args.normalization_type,

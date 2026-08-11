@@ -2,6 +2,7 @@
 
 #include "types.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <csignal>
 #include <fstream>
@@ -43,6 +44,17 @@ inline void set_trial_seed(unsigned int seed, int trial, int fold) {
     // Mix the seed with trial and fold indices for per-run reproducibility
     std::seed_seq seq{seed, static_cast<unsigned int>(trial), static_cast<unsigned int>(fold)};
     get_trial_generator().seed(seq);
+}
+
+// Number of weight updates in one epoch
+OUT inline int batches_per_epoch(int batch_size, int train_size) {
+    const int batch = (batch_size <= 0 || batch_size > train_size) ? train_size : batch_size;
+    return (batch <= 0) ? 1 : (train_size + batch - 1) / batch;
+}
+
+// Actual number of epochs for a specific training context
+OUT inline int epochs_for(int updates, int batch_size, int train_size) {
+    return std::max(1, updates / batches_per_epoch(batch_size, train_size));
 }
 
 // Get the class index of a given sample from the labels
