@@ -60,6 +60,24 @@ DenseLayer::DenseLayer(Parameters params, OptimizerType opt_type, bool instantia
     }
 }
 
+/*
+-Forward:
+net_t = sum_u(w_tu * o_u)
+o_t = f_t(net_t)
+
+-Backward:
+Etot = sum_p(Ep) = sum_p(loss(o_k, d_k))
+dEtot/dw = sum_p(dEp/dw)
+dEp/dw_tu = dEp/dnet_t * dnet_t/w_tu = dEp/dnet_t * (dsum_u(w_tu * o_u) / dw_tu)
+dEp/dw_tu (weights_delta) = delta_t * o_u
+
+delta_t (output_gradient) = dEp/dnet_t = dEp/do_t * do_t/dnet_t = dEp/do_t * f'_t(net_t)
+-output unit (k):
+    delta_k = dEp/dnet_k = dEp/do_k * do_k/dnet_k = loss'(o_k, d_k) * f'_k(net_k) ~= (d_k - o_k) * f'_k(net_k)
+-hidden unit (j):
+    delta_j = dEp/dnet_j = dEp/do_j * do_j/dnet_j = (dEp/dnet_k * dnet_k/do_j) * do_j/dnet_j = sum_k(delta_k * w_kj) * f'_j(net_j)
+*/
+
 // Forward pass through the DenseLayer, saving the input for backpropagation
 Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
     if (params.W.cols() != input_matrix.rows()) {
@@ -69,21 +87,21 @@ Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
         X = input_matrix; // Store the input for backpropagation
     }
     // Return the output of the layer by multiplying the weights with the input and adding the bias
-    // net_t = sum_u(w_tu * o_u) + w_t0, for every pattern; or Y = W * X + b
+    // net_t = sum_u(w_tu * o_u) + w_t0 or Y = W * X + b (for every pattern)
     return (params.W * input_matrix).colwise() + params.b;
 }
 
 // Backward pass through the DenseLayer, updating weights and biases based on the output gradient
 Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) {
     const int batch_size = static_cast<int>(X.cols());
-    // Calculate the gradients for weights and biases
+    // Calculate the gradient updates: dE/dw_tu = (1 / mb) * sum_p(dE/dnet_t * dnet_t/dw_tu) = (1 / mb) * sum_p(delta_t * o_u)
     Matrix weights_delta = (output_gradient * X.transpose()) / batch_size; // dE/dw_tu = (1 / mb) * sum_p(dE/dnet_t * o_u)
     Vector bias_delta = output_gradient.rowwise().sum() / batch_size;      // dE/dw_t0 = (1 / mb) * sum_p(dE/dnet_t)
 
     // Calculate the neuron gradient to propagate to the previous layer. Skipped for the first layer of the network
     Matrix input_gradient;
     if (!is_first_layer) {
-        // dE/do_u = sum_t(w_tu * dE/dnet_t), the sum over the units this unit connects to in the next layer
+        // dE/do_u = sum_t(w_tu * dE/dnet_t) = delta_u, the sum over the units this unit connects to in the next layer
         input_gradient = params.W.transpose() * output_gradient;
     }
 
@@ -110,7 +128,7 @@ Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
     if (training && activation.derivative) {
         X = input_matrix; // Only stored when backward pass will actually use it to calculate the derivative
     }
-    // o_t = f(net_t)
+    // o_t = f_t(net_t)
     return activation.function(input_matrix); // Call the activation function on the input matrix
 }
 
