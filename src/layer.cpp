@@ -9,7 +9,28 @@
 #include <random>
 #include <utility>
 
-// DenseLayer constructor that initializes weights based on the specified initialization type
+/*
+fan_in:  Number of input units
+fan_out: Number of output units
+
+RANDOM:
+  Uniform distribution in [-1, 1]
+
+LECUN:
+  Uniform distribution in [-sqrt(3 / fan_in), sqrt(3 / fan_in)]
+  Keeps the variance of the layer outputs equal to the inputs by scaling the weights by 1/fan_in
+  Stabilizes the variance of the signals during forward pass
+
+GLOROT:
+  Uniform distribution in [-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))]
+  Recommended for Sigmoid or Tanh activation functions
+  Stabilizes the variance of the signals during both the forward pass and the backward pass
+
+HE:
+  Normal distribution with mean 0 and standard deviation sqrt(2 / fan_in)
+  Recommended for ReLU activation functions
+  Since ReLU sets to zero half of the inputs (negative values), He initialization compensates for this loss by multiplying the baseline variance by 2
+*/
 DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type) {
     // Determine the distribution value based on the initialization type.
     Scalar distribution_value;
@@ -61,20 +82,20 @@ DenseLayer::DenseLayer(Parameters params, OptimizerType opt_type, bool instantia
 }
 
 /*
--Forward:
-net_t = sum_u(w_tu * o_u)
-o_t = f_t(net_t)
+Forward:
+  net_t = sum_u(w_tu * o_u)
+  o_t = f_t(net_t)
 
--Backward:
-Etot = sum_p(Ep) = sum_p(loss(o_k, d_k))
-dEtot/dw = sum_p(dEp/dw)
-dEp/dw_tu = dEp/dnet_t * dnet_t/w_tu = dEp/dnet_t * (dsum_u(w_tu * o_u) / dw_tu)
-dEp/dw_tu (weights_delta) = delta_t * o_u
+Backward:
+  Etot = sum_p(Ep) = sum_p(loss(o_k, d_k))
+  dEtot/dw = sum_p(dEp/dw)
+  dEp/dw_tu = dEp/dnet_t * dnet_t/w_tu = dEp/dnet_t * (dsum_u(w_tu * o_u) / dw_tu)
+  dEp/dw_tu (weights_delta) = delta_t * o_u
 
-delta_t (output_gradient) = dEp/dnet_t = dEp/do_t * do_t/dnet_t = dEp/do_t * f'_t(net_t)
--output unit (k):
+  delta_t (output_gradient) = dEp/dnet_t = dEp/do_t * do_t/dnet_t = dEp/do_t * f'_t(net_t)
+  -output unit (k):
     delta_k = dEp/dnet_k = dEp/do_k * do_k/dnet_k = loss'(o_k, d_k) * f'_k(net_k) ~= (d_k - o_k) * f'_k(net_k)
--hidden unit (j):
+  -hidden unit (j):
     delta_j = dEp/dnet_j = dEp/do_j * do_j/dnet_j = (dEp/dnet_k * dnet_k/do_j) * do_j/dnet_j = sum_k(delta_k * w_kj) * f'_j(net_j)
 */
 

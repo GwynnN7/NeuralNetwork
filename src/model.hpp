@@ -24,8 +24,8 @@ struct Model {
     int batch_size = 0;
     Scalar eta = 0.0;       // Learning rate
     Scalar lambda = 0.0;    // L2 regularization
-    Scalar alpha = 0.0;     // SGD/RMSProp momentum
-    Scalar beta1 = ADAM_B1; // Adam "momentum"
+    Scalar alpha = 0.0;     // SGD's momentum || RMSProp's first moment
+    Scalar beta1 = ADAM_B1; // Adam's first moment
 
     // Runtime parameters, not part of model selection
     TaskType task = TaskType::REGRESSION;

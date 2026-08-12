@@ -32,10 +32,10 @@ OUT inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {
 
 // Every metric measured at each step of training
 struct Metrics {
-    Scalar mse = 0;      // Mean Squared Error: (1/l) * sum_p(sum_k((d_k - o_k)^2))
-    Scalar mee = 0;      // Mean Euclidean Error: (1/l) * sum_p(||d_p - o_p||_2)
+    Scalar mse = 0;      // Mean Squared Error
+    Scalar mee = 0;      // Mean Euclidean Error
     Scalar error = 0;    // Error function value
-    Scalar accuracy = 0; // Accuracy: proportion of correct predictions (only for classification tasks)
+    Scalar accuracy = 0; // Accuracy (only for classification tasks)
 
     Scalar weight = 0; // Number of samples that contributed to this metric
 

@@ -7,9 +7,12 @@
 #include <cmath>
 #include <vector>
 
-// Scores used for model selection
-// For classification the main metric is the error rate (1 - accuracy), and the tie-breaking metric is the MSE
-// For regression the main metric is the MEE, and the tie-breaking metric is the MSE
+/*
+Scores used for model selection
+For classification the main metric is the error rate (1 - accuracy), and the tie-breaking metric is the MSE
+For regression the main metric is the MEE, and the tie-breaking metric is the MSE
+*/
+
 struct SelectionScore {
     Scalar main_metric = INF;
     Scalar tie_metric = INF;

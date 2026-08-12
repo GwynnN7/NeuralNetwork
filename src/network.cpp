@@ -183,9 +183,12 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     const auto holdout_features = dataset.features(Eigen::placeholders::all, indices.test_indices);
     const auto holdout_labels = dataset.labels(Eigen::placeholders::all, indices.test_indices);
 
-    // Fit the normalizers on the training data only to avoid data leakage
+    /*
+    The normalizers are fitted on the training data and then applied to both the training and holdout data
+    This avoids data leakage and ensures that the data is transformed in the same way
+    For classification tasks, the labels are not normalized
+    */
     features_norm = Normalizer::fit(ctx.norm_type, train_features);
-    // Don't normalize the labels for classification tasks
     labels_norm = model.task == TaskType::REGRESSION ? Normalizer::fit(ctx.norm_type, train_labels) : Normalizer{};
 
     // Calculate the number of batches
@@ -228,24 +231,50 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         log_file.flush();
     };
 
-    // Epochs and learning rate variables (warmup and decay)
-    // The number of epochs is derived from the number of updates and the batch size, since smaller batch sizes result in more weight updates per epoch
-    // This allows warmup, decay and early stopping to be applied consistently and meaningfully across different batch sizes
+    /*
+    LEARNING RATE:
+
+    The number of epochs is derived from the total weight updates and the batch size, since smaller batch sizes result in more updates per epoch
+    This ensures warmup, decay, and early stopping are applied consistently and meaningfully regardless of the batch size used
+
+    initial_eta is the predefined starting learning rate
+    target_eta is the fraction of it (TARGET_ETA_MULTIPLIER) that is reached after the decay period, `tau` epochs (TAU_MULTIPLIER)
+
+    WARMUP:
+    eta = initial_eta * (epoch / warmup_epochs)
+    Learning rate linearly increases from `initial_eta / warmup_epochs` to `initial_eta` over `warmup_epochs` number of epochs
+
+    LINEAR DECAY:
+    eta = initial_eta * (1 - (epoch - warmup_epochs) / tau) + target_eta * ((epoch - warmup_epochs) / tau)
+    Learning rate linearly decreases from `initial_eta` to `target_eta` over `tau` number of epochs, immediately following the warmup period
+    */
     const int epochs = epochs_for(ctx.updates, model.batch_size, input_size);
     const int warmup_epochs = std::clamp(ctx.warmup / num_batches, 0, std::max(0, epochs - 1));
     const Scalar initial_eta = model.eta;
-    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;                                        // Target learning rate after decay
-    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(epochs - warmup_epochs) * TAU_MULTIPLIER); // Time constant for linear decay
+    const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
+    const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(epochs - warmup_epochs) * TAU_MULTIPLIER);
 
-    // Early Stopping variables
+    /*
+    EARLY STOPPING:
+
+    NONE:
+    Trains for the full number of epochs
+    Used when explicitly selected, or as a fallback if other rules cannot be applied
+
+    ERROR:
+    Stops training when a predefined `target error` threshold is reached
+    If no target is available, it falls back to PATIENCE.
+    - In model selection, the holdout (validation) error is used as the target
+    - Everywhere else, the training error is used since the holdout (assessment) set cannot be used
+
+    PATIENCE:
+    Stops training when the error has not improved for a set number of epochs
+    - In model selection, improvement is checked on the holdout (validation) set.
+    - Everywhere else, improvement is checked on the training set since the holdout (assessment) set cannot be used
+    */
     Scalar patience_error = 0.0;
     int epochs_without_improvement = 0;
     bool auto_early_stop_flag = false;
-
-    // Determine the stopping rule to apply for this run
-    // NONE means training for the full number of epochs, and it is the fallback if the other rules cannot be applied (or if selected)
-    // ERROR means stopping when the target error level is reached, and it is only applied when the target error is available or falls back to PATIENCE
-    // PATIENCE means stopping when the error has not improved for a number of epochs, either on the validation set (in model selection's inner folds) or on the training set (when holdout is the assessment set)
     const StoppingRule rule = [&ctx] {
         if (ctx.stopping == StoppingRule::ERROR && ctx.target_error) {
             return StoppingRule::ERROR;
@@ -255,7 +284,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     // To make the stopping rules consistent across different batch sizes, the patience is converted from weight updates to epochs, since smaller batch sizes result in more weight updates per epoch
     const int patience_epochs = std::clamp(ctx.patience / num_batches, 1, std::max(1, epochs));
 
-    // Batch index buffers
+    // Reused the same buffer for indices to avoid repeated allocations
     std::vector<int> batch_indices;
     batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
@@ -263,7 +292,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     for (int i = 0; i < epochs; i++) {
         std::ranges::shuffle(epoch_indices, get_trial_generator());
 
-        // Update the learning rate
+        // Learning rate logic
         if (i < warmup_epochs) {
             // Warmup: linearly increase the learning rate from initial_eta/warmup_epochs to initial_eta
             model.eta = initial_eta * (static_cast<Scalar>(i + 1) / static_cast<Scalar>(warmup_epochs));
@@ -317,8 +346,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
                 auto_early_stop_flag = true;
             }
         } else if (rule == StoppingRule::PATIENCE) {
-            // In model selection the holdout is the validation set, so it can be used to check for improvements
-            // Everywhere else the holdout is the assessment set and can't be used, so the training error is used to check for convergence
+            // Pick the correct error to check for improvement based on whether we are in model selection or not
             Scalar current_error = ctx.in_model_selection ? curves.holdout.last_error() : curves.training.last_error();
             // If the current error is better than the best error so far (with tolerance), reset the patience counter and save the model parameters
             if (i == 0 || current_error < patience_error - std::abs(patience_error) * ES_TOLERANCE) {

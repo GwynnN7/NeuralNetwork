@@ -4,60 +4,60 @@
 
 // Activation Functions
 
-// Activation Functions: o_t = f(net_t), where net_t = sum_u(w_tu * o_u) is the net input of a unit
+// o_t = f(net_t), where net_t = sum_u(w_tu * o_u) is the net input of a unit
 namespace ActivationFunctions {
+// f(net) = 1 / (1 + e^(-net))
 inline Matrix sigmoid(const Matrix& net) {
-    // f(net) = 1 / (1 + e^(-net))
     return Scalar(1) / (Scalar(1) + (-net.array()).exp());
 }
 
+// f'(net) = f(net) * (1 - f(net))
 inline Matrix sigmoid_derivative(const Matrix& net) {
-    // f'(net) = f(net) * (1 - f(net))
     Matrix s = sigmoid(net);
     return s.array() * (Scalar(1) - s.array());
 }
 
+// f(net) = max(0, net)
 inline Matrix relu(const Matrix& net) {
-    // f(net) = max(0, net)
     return net.array().max(Scalar(0));
 }
 
+// f'(net) = 1 if net > 0, else 0
 inline Matrix relu_derivative(const Matrix& net) {
-    // f'(net) = 1 if net > 0, else 0
     return (net.array() > Scalar(0)).template cast<Scalar>();
 }
 
+// f(net) = (e^net - e^(-net)) / (e^net + e^(-net)) = tanh(net)
 inline Matrix tanh_activation(const Matrix& net) {
-    // f(net) = (e^net - e^(-net)) / (e^net + e^(-net)) = tanh(net)
     return net.array().tanh();
 }
 
+// f'(net) = 1 - f(net)^2
 inline Matrix tanh_derivative(const Matrix& net) {
-    // f'(net) = 1 - f(net)^2
     Matrix t = tanh_activation(net);
     return Scalar(1) - (t.array() * t.array());
 }
 
+// f(net) = net
 inline Matrix linear(const Matrix& net) {
-    // f(net) = net
     return net;
 }
 
+// f'(net) = 1 (see has_identity_derivative)
 inline Matrix linear_derivative(const Matrix& net) {
-    // f'(net) = 1 (see has_identity_derivative)
     return Matrix::Ones(net.rows(), net.cols());
 }
 
+// f(net_k) = e^(net_k) / sum_j(e^(net_j))
 inline Matrix softmax(const Matrix& net) {
-    // f(net_k) = e^(net_k) / sum_j(e^(net_j))
     Matrix inputs = net.rowwise() - net.colwise().maxCoeff(); // Avoid e^x overflow
     inputs = inputs.array().exp();
     Matrix sum = inputs.colwise().sum();
     return inputs.array().rowwise() / sum.row(0).array();
 }
 
+// Softmax derivative is handled in the loss function (CCE), so this function is never called
 inline Matrix softmax_derivative(const Matrix&) {
-    // Softmax derivative is handled in the loss function (CCE), so this function is never called
     throw std::logic_error("Softmax is only supported as an output activation paired with CCE loss");
 }
 
@@ -69,50 +69,50 @@ constexpr bool has_identity_derivative(ActivationType activation) noexcept {
 
 // Functions to compute loss and its derivative (error, without regularization)
 namespace LossFunctions {
+// E = (1 / l) * sum_p(sum_k((d_k - o_k)^2))
 inline Scalar mse(const Matrix& target, const Matrix& prediction) {
-    // E = (1 / l) * sum_p(sum_k((d_k - o_k)^2))
     return (prediction - target).colwise().squaredNorm().mean();
 }
 
+// E = (1 / l) * sum_p(sqrt(sum_k((d_k - o_k)^2)))
 inline Scalar mee(const Matrix& target, const Matrix& prediction) {
-    // E = (1 / l) * sum_p(sqrt(sum_k((d_k - o_k)^2)))
     return (prediction - target).colwise().norm().mean();
 }
 
+// dE/do_k = 2 * (o_k - d_k)
 inline Matrix mse_derivative(const Matrix& target, const Matrix& prediction) {
-    // dE/do_k = 2 * (o_k - d_k)
     return 2 * (prediction - target);
 }
 
+// dE/do_k = (o_k - d_k) / sqrt(sum_k((o_k - d_k)^2))
 inline Matrix mee_derivative(const Matrix& target, const Matrix& prediction) {
-    // dE/do_k = (o_k - d_k) / sqrt(sum_k((o_k - d_k)^2))
     const Matrix numerator = prediction - target;
     const Matrix denominator = numerator.colwise().norm().cwiseMax(LOSS_EPSILON);
     return numerator.array().rowwise() / denominator.array().row(0);
 }
 
+// E = -(1 / l) * sum_p(sum_k(d_k * log(o_k) + (1 - d_k) * log(1 - o_k)))
 inline Scalar bce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // E = -(1 / l) * sum_p(sum_k(d_k * log(o_k) + (1 - d_k) * log(1 - o_k)))
     return -(target.array() * pred_clipped.array().log() +
              (Scalar(1) - target.array()) * (Scalar(1) - pred_clipped.array()).log())
                 .sum() /
            target.cols();
 }
 
+// Combined derivative of BCE + Sigmoid: dE/dnet_k = o_k - d_k (see includes_output_derivative)
 inline Matrix bce_derivative(const Matrix& target, const Matrix& prediction) {
-    // Combined derivative of BCE + Sigmoid: dE/dnet_k = o_k - d_k (see includes_output_derivative)
     return (prediction - target);
 }
 
+// E = -(1 / l) * sum_p(sum_k(d_k * log(o_k)))
 inline Scalar cce(const Matrix& target, const Matrix& prediction) {
     Matrix pred_clipped = prediction.cwiseMax(LOSS_EPSILON).cwiseMin(Scalar(1) - LOSS_EPSILON);
-    // E = -(1 / l) * sum_p(sum_k(d_k * log(o_k)))
     return -(target.cwiseProduct(pred_clipped.array().log().matrix())).colwise().sum().mean();
 }
 
+// Combined derivative of CCE + Softmax: dE/dnet_k = o_k - d_k (see includes_output_derivative)
 inline Matrix cce_derivative(const Matrix& target, const Matrix& prediction) {
-    // Combined derivative of CCE + Softmax: dE/dnet_k = o_k - d_k (see includes_output_derivative)
     return (prediction - target);
 }
 
