@@ -44,7 +44,7 @@ mlcup)
     PATIENCE=1500
     ;;
 mnist)
-    UPDATES=82000 # 82000 updates is about 300 epochs at batch 128 here
+    UPDATES=82000
     PATIENCE=3000
     TRIALS=3
     DATASET_RATIO=0.5
@@ -54,15 +54,16 @@ esac
 
 # --------------------
 
-NAME="$1"
-if [ -n "$2" ]; then
-    NAME="$2"
-fi
+GRID_NAME="${3:-$1}"
+GRID_NAME="${GRID_NAME%.csv}"
+NAME="${2:-$(basename "$GRID_NAME")}"
+DIR_NAME="${1%_*}"
+DIR_NAME="${DIR_NAME%%[0-9]*}"
 
-if [ -n "$3" ]; then
-    GRID_FILE="grids/$3.csv"
+if [ -d "grids/$DIR_NAME" ]; then
+    GRID_FILE="grids/$DIR_NAME/${GRID_NAME}.csv"
 else
-    GRID_FILE="grids/$1.csv"
+    GRID_FILE="grids/${GRID_NAME}.csv"
 fi
 
 if [ ! -f "$GRID_FILE" ]; then
