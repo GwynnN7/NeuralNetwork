@@ -7,10 +7,10 @@
 struct Dataset {
     DatasetType type;
     TaskType task;
-
-    // Data matrices are stored transposed: features as rows and patterns as columns (features x patterns)
-    // This allows a layer to evaluate every pattern without transposing in the forward pass (W * X)
-    // The output matrix keeps the same layout: each row is an output neuron and each column is a processed pattern
+    /*
+        Data/output matrices are stored transposed: features/outputs as rows and patterns as columns (features x patterns)
+        This allows a layer to evaluate every pattern without transposing in the forward pass (W * X)
+    */
     Matrix features, labels;
     int num_samples, num_features, num_classes;
 

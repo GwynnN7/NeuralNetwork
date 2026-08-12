@@ -231,46 +231,45 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         log_file.flush();
     };
 
+    // LEARNING RATE
     /*
-    LEARNING RATE:
+        The number of epochs is derived from the total weight updates and the batch size, since smaller batch sizes result in more updates per epoch
+        This ensures warmup, decay, and early stopping are applied consistently and meaningfully regardless of the batch size used
 
-    The number of epochs is derived from the total weight updates and the batch size, since smaller batch sizes result in more updates per epoch
-    This ensures warmup, decay, and early stopping are applied consistently and meaningfully regardless of the batch size used
+        initial_eta is the predefined starting learning rate
+        target_eta is the fraction of it (TARGET_ETA_MULTIPLIER) that is reached after the decay period, `tau` epochs (TAU_MULTIPLIER)
 
-    initial_eta is the predefined starting learning rate
-    target_eta is the fraction of it (TARGET_ETA_MULTIPLIER) that is reached after the decay period, `tau` epochs (TAU_MULTIPLIER)
+        WARMUP:
+        eta = initial_eta * (epoch / warmup_epochs)
+        Learning rate linearly increases from `initial_eta / warmup_epochs` to `initial_eta` over `warmup_epochs` number of epochs
 
-    WARMUP:
-    eta = initial_eta * (epoch / warmup_epochs)
-    Learning rate linearly increases from `initial_eta / warmup_epochs` to `initial_eta` over `warmup_epochs` number of epochs
-
-    LINEAR DECAY:
-    eta = initial_eta * (1 - (epoch - warmup_epochs) / tau) + target_eta * ((epoch - warmup_epochs) / tau)
-    Learning rate linearly decreases from `initial_eta` to `target_eta` over `tau` number of epochs, immediately following the warmup period
+        LINEAR DECAY:
+        eta = initial_eta * (1 - (epoch - warmup_epochs) / tau) + target_eta * ((epoch - warmup_epochs) / tau)
+        Learning rate linearly decreases from `initial_eta` to `target_eta` over `tau` number of epochs, immediately following the warmup period
     */
     const int epochs = epochs_for(ctx.updates, model.batch_size, input_size);
     const int warmup_epochs = std::clamp(ctx.warmup / num_batches, 0, std::max(0, epochs - 1));
     const Scalar initial_eta = model.eta;
     const Scalar target_eta = initial_eta * TARGET_ETA_MULTIPLIER;
     const Scalar tau = std::max(Scalar(1), static_cast<Scalar>(epochs - warmup_epochs) * TAU_MULTIPLIER);
+    // ----------------------
 
+    // --- EARLY STOPPING ---
     /*
-    EARLY STOPPING:
+        NONE:
+        Trains for the full number of epochs
+        Used when explicitly selected, or as a fallback if other rules cannot be applied
 
-    NONE:
-    Trains for the full number of epochs
-    Used when explicitly selected, or as a fallback if other rules cannot be applied
+        ERROR:
+        Stops training when a predefined `target error` threshold is reached
+        If no target is available, it falls back to PATIENCE
+        - In model selection, the holdout (validation) error is used as the target
+        - Everywhere else, the training error is used since the holdout (assessment) set cannot be used
 
-    ERROR:
-    Stops training when a predefined `target error` threshold is reached
-    If no target is available, it falls back to PATIENCE.
-    - In model selection, the holdout (validation) error is used as the target
-    - Everywhere else, the training error is used since the holdout (assessment) set cannot be used
-
-    PATIENCE:
-    Stops training when the error has not improved for a set number of epochs
-    - In model selection, improvement is checked on the holdout (validation) set.
-    - Everywhere else, improvement is checked on the training set since the holdout (assessment) set cannot be used
+        PATIENCE:
+        Stops training when the error has not improved for a set number of epochs
+        - In model selection, improvement is checked on the holdout (validation) set
+        - Everywhere else, improvement is checked on the training set since the holdout (assessment) set cannot be used
     */
     Scalar patience_error = 0.0;
     int epochs_without_improvement = 0;
@@ -283,16 +282,18 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     }();
     // To make the stopping rules consistent across different batch sizes, the patience is converted from weight updates to epochs, since smaller batch sizes result in more weight updates per epoch
     const int patience_epochs = std::clamp(ctx.patience / num_batches, 1, std::max(1, epochs));
+    // --------------------
 
     // Reused the same buffer for indices to avoid repeated allocations
     std::vector<int> batch_indices;
     batch_indices.reserve(current_batch_size);
     std::vector<int> epoch_indices = indices.train_indices;
 
+    // Main training loop over epochs
     for (int i = 0; i < epochs; i++) {
         std::ranges::shuffle(epoch_indices, get_trial_generator());
 
-        // Learning rate logic
+        // --- Learning rate logic ---
         if (i < warmup_epochs) {
             // Warmup: linearly increase the learning rate from initial_eta/warmup_epochs to initial_eta
             model.eta = initial_eta * (static_cast<Scalar>(i + 1) / static_cast<Scalar>(warmup_epochs));
@@ -301,9 +302,10 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             const Scalar gamma = std::min(Scalar(1), static_cast<Scalar>(i - warmup_epochs) / tau);
             model.eta = (Scalar(1) - gamma) * initial_eta + (gamma * target_eta);
         }
+        // ---------------------------
 
+        // --- Training loop over batches ---
         LearningCurve batch_curve;
-        // Loop through each batch in the current epoch
         for (int j = 0; j < num_batches && !early_stop_flag; j++) {
             // Determine the starting index and size for the current batch
             const int index_start = j * current_batch_size;
@@ -323,23 +325,23 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         curves.training.append_epochs(batch_curve);
         curves.training.normalize_epoch();
 
-        // Check for NaN or Inf in the latest training error to stop training
+        // Check for NaN or Inf in the training error
         if (!std::isfinite(curves.training.last_error())) {
             curves.training.invalid = true;
             curves.holdout.invalid = true;
             std::println("\n[Forced Early stopping (NaN/Inf): Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             break;
         }
-
-        // Evaluate the model on the holdout split and calculate the loss and accuracy
+        // Evaluate the holdout set if needed
         const bool needs_holdout = (rule == StoppingRule::PATIENCE && ctx.in_model_selection) || ctx.logging;
         const bool predict_holdout = needs_holdout && !indices.test_indices.empty();
         if (predict_holdout) {
             Matrix holdout_prediction = predict(holdout_features);
             curves.holdout.append_epoch(holdout_labels, holdout_prediction, model.loss_type, curves.track_accuracy());
         }
+        // ----------------------------------
 
-        // Early stopping logic
+        //  --- Early stopping logic ---
         if (rule == StoppingRule::ERROR) {
             // Stop training if the training error has reached the target error level
             if (curves.training.last_error() <= *ctx.target_error) {
@@ -362,6 +364,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
                 auto_early_stop_flag = true;
             }
         }
+        // ----------------------------
 
         // Log the metrics for the current epoch to the log file
         if (ctx.logging && (i % LOG_FREQ == 0 || i == epochs - 1)) {

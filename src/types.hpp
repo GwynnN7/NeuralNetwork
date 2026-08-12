@@ -72,7 +72,7 @@ struct CsvRow {
 
 // Define a small epsilon value used in optimizer denominators
 inline constexpr Scalar EPSILON = 1e-8;
-// Define a small epsilon value to avoid log(0) in loss functions (works for both float and double, *8 is a safety for single precision)
+// Define a small epsilon value to avoid log(0) in loss functions (works for both float and double, *8 is a safety for float)
 inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
 // Define a constant for infinity
 inline constexpr Scalar INF = std::numeric_limits<Scalar>::infinity();

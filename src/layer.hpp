@@ -5,6 +5,20 @@
 
 #include <memory>
 
+/*
+Layer:
+  Layer classes are templates for each actual layer in the network
+  Forward pass: computes the output of the layer given an input matrix
+  Backward pass: computes the gradient of the loss given the output gradient
+
+DenseLayer:
+  A fully connected layer with weights and biases (Parameters struct)
+  In backward pass updates the weights and biases using the optimizer
+
+ActivationLayer:
+  Follows each DenseLayer and applies a non-linear activation function to the input
+*/
+
 class Layer {
   protected:
     Matrix X; // Input of the last training forward pass
