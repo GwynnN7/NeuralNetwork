@@ -79,7 +79,8 @@ clear
 echo "[1] Early Stop"
 echo "[2] Live Plot"
 echo "[3] Best Model"
-echo "[4] Kill Process"
+echo "[4] Finish Now"
+echo "[5] Kill Process"
 
 $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --train --shuffle --seed $SEED --trials $TRIALS \
@@ -113,6 +114,8 @@ while true; do
         elif [[ $key == "3" ]]; then
             run_best_model
         elif [[ $key == "4" ]]; then
+            kill -SIGUSR2 "$PID"
+        elif [[ $key == "5" ]]; then
             kill -SIGINT "$PID"
         fi
     fi
