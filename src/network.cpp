@@ -7,6 +7,7 @@
 #include "utility.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <memory>
@@ -164,6 +165,9 @@ void Network::backward(const Matrix& output_gradient, Scalar batch_fraction) {
 
 // Train the network on the training split and evaluate on the holdout split
 RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const TrainContext& ctx) {
+    // Initial time for the run
+    const auto run_start = std::chrono::steady_clock::now();
+
     // Run constants
     const bool is_first_run = (!ctx.in_model_selection || ctx.inner_index == 0) && ctx.trial == 0;
 
@@ -399,6 +403,9 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
     model.eta = initial_eta; // Restore the configured learning rate after decay
     early_stop_flag = 0;     // Reset the early stop flag for the next fold
+
+    // Total time for the run
+    curves.duration = std::chrono::duration<Scalar>(std::chrono::steady_clock::now() - run_start).count();
 
     return curves;
 }

@@ -126,6 +126,8 @@ struct RunCurves {
     TaskType task;
     // The epoch that was selected as the best by early stopping
     int best_epoch = 0;
+    // Total time of this run in seconds
+    Scalar duration = 0;
 
     explicit RunCurves(TaskType task_type = TaskType::REGRESSION) : task(task_type) {};
 
