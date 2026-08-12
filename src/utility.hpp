@@ -16,10 +16,16 @@
 // Root directory for artifacts
 inline std::string MODEL_PATH;
 
-// Flag and signal handler to handle cli early stopping
+// Flag and signal handler to handle cli early stopping of the run in progress
 inline volatile std::sig_atomic_t early_stop_flag = 0;
 inline void handle_signal(int) {
     early_stop_flag = early_stop_flag ? 0 : 1;
+}
+
+// Flag and signal handler to handle cli to stop the entire training and save the results
+inline volatile std::sig_atomic_t finish_flag = 0;
+inline void handle_finish_signal(int) {
+    finish_flag = 1;
 }
 
 // Shared generator for building dataset splits

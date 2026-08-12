@@ -46,7 +46,7 @@ void train(const Dataset& dataset, const Args& args) {
         Model best_model = grid_search.front();
 
         // Model selection loop, skipped when there is only one model
-        for (size_t m = 0; in_model_selection && m < grid_search.size(); ++m) {
+        for (size_t m = 0; in_model_selection && !finish_flag && m < grid_search.size(); ++m) {
             // Get next model and print its configuration
             const Model& grid_model = grid_search[m];
             grid_model.print(epochs_for(args.updates, grid_model.batch_size, static_cast<int>(inner_folds.front().train_indices.size())));
@@ -123,6 +123,11 @@ void train(const Dataset& dataset, const Args& args) {
 
             const RunCurves run = best_fold_network.train(dataset, outer_folds[i], ctx);
             best_models[i].final_summary.value().add_run(run);
+        }
+
+        if (finish_flag) {
+            std::println("\n[Finishing early with {} outer fold(s) completed]", i + 1);
+            break;
         }
     }
 
@@ -290,6 +295,7 @@ int main(int argc, char* argv[]) {
     std::println("\n\n[Neural Network Framework]");
 
     std::signal(SIGUSR1, handle_signal);
+    std::signal(SIGUSR2, handle_finish_signal);
 
     try {
         Args args = Args::parse(argc, argv);
