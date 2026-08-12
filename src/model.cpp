@@ -111,6 +111,8 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
 void Model::print(int epochs) const {
     std::println("\nTraining Configuration:");
 
+    std::println(" • {:<25}{}", "Model Id:", id);
+    std::println(" • {:<25}{}", "Network:", net_struct | std::views::transform([](int u) { return std::to_string(u); }) | std::views::join_with(std::string("-")) | std::ranges::to<std::string>());
     std::println(" • {:<25}{}", "Epochs:", epochs);
     std::println(" • {:<25}{}", "Batch Size:", batch_size);
     std::println(" • {:<25}{}", "Learning Rate:", eta);

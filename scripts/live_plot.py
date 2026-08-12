@@ -23,10 +23,11 @@ VIEWS = {
 }
 CLASSIFICATION_ONLY = {"Accuracy"}
 
-TRAIN_COLOR = "purple"
-VALID_COLOR = "orange"
-TEST_COLOR = "blue"
+TRAIN = ("purple", "-", "o")
+VALID = ("orange", "--", "s")
+TEST = ("blue", "-.", "^")
 BAND_ALPHA = 0.18
+MARKERS_PER_LINE = 12  # Markers are spaced out so they identify the line without hiding it
 
 
 def load(path):
@@ -52,12 +53,14 @@ class Runs:
         self.trials = df["trial"].nunique()
         self.best = self.mean["train_error" if retrain else "test_error"].idxmin()
 
-    def draw(self, ax, col, color, label, dashed=False, mark=None):
+    def draw(self, ax, col, style, label, mark=None):
+        color, linestyle, marker = style
         epoch = self.mean["epoch"]
         ax.fill_between(epoch, self.mean[col] - self.sd[col], self.mean[col] + self.sd[col],
                         color=color, alpha=BAND_ALPHA, linewidth=0)
         ax.plot(epoch, self.mean[col], color=color, linewidth=1.5,
-                linestyle="--" if dashed else "-", label=label)
+                linestyle=linestyle, label=label,
+                marker=marker, markersize=5, markevery=max(1, len(epoch) // MARKERS_PER_LINE))
         if mark is None:
             return
         x, y = self.mean.loc[self.best, "epoch"], self.mean.loc[self.best, col]
@@ -212,17 +215,17 @@ class Viewer:
 
         if inner_df is not None:
             runs = Runs(inner_df, retrain=False)
-            runs.draw(self.ax, f"train_{key}", TRAIN_COLOR, f"Training {self.view}", dashed=True)
-            runs.draw(self.ax, f"test_{key}", VALID_COLOR, f"Validation {self.view}",
+            if outer_df is None:
+                runs.draw(self.ax, f"train_{key}", TRAIN, f"Training {self.view}")
+            runs.draw(self.ax, f"test_{key}", VALID, f"Validation {self.view}",
                       mark=None if outer_df is not None else fmt)
             spread = f"{runs.folds} Folds" + (f" x {runs.trials} Trials" if runs.trials > 1 else "")
             title = f"Grid Search ({spread}):  {header}"
 
         if outer_df is not None:
             runs = Runs(outer_df, retrain=True)
-            if inner_df is None:
-                runs.draw(self.ax, f"train_{key}", TRAIN_COLOR, f"Train {self.view}", dashed=True)
-            runs.draw(self.ax, f"test_{key}", TEST_COLOR, f"Test {self.view}", mark=fmt)
+            runs.draw(self.ax, f"train_{key}", TRAIN, f"Training {self.view}")
+            runs.draw(self.ax, f"test_{key}", TEST, f"Test {self.view}", mark=fmt)
             trials = f" ({runs.trials} Trials)" if runs.trials > 1 else ""
             title = f"Best Model Evaluation{trials}:  {header}"
 
