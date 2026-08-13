@@ -1,0 +1,46 @@
+# =============================================================================
+# MONK-2 -- binary target, 17 one-hot inputs, 1 output. 169 train / 432 test
+# =============================================================================
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+
+# --- A. Capacity x Weight Decay ---------------------------------------------
+0,2,tanh,sigmoid,glorot,sgd,bce,0,0.5,0,0.85,0.9
+1,2,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-3,0.85,0.9
+2,2,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+3,2,tanh,sigmoid,glorot,sgd,bce,0,0.5,3e-2,0.85,0.9
+4,2,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+5,3,tanh,sigmoid,glorot,sgd,bce,0,0.5,0,0.85,0.9
+6,3,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-3,0.85,0.9
+7,3,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+8,3,tanh,sigmoid,glorot,sgd,bce,0,0.5,3e-2,0.85,0.9
+9,3,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+10,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,0,0.85,0.9
+11,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-3,0.85,0.9
+12,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+13,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,3e-2,0.85,0.9
+14,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+15,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,0,0.85,0.9
+16,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-3,0.85,0.9
+17,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+18,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,3e-2,0.85,0.9
+19,8,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-1,0.85,0.9
+
+# --- B. Effective Step eta/(1-alpha) ----------------------------------------
+20,4,tanh,sigmoid,glorot,sgd,bce,0,0.075,1e-2,0.85,0.9
+21,4,tanh,sigmoid,glorot,sgd,bce,0,0.15,1e-2,0.85,0.9
+22,4,tanh,sigmoid,glorot,sgd,bce,0,0.3,1e-2,0.85,0.9
+23,4,tanh,sigmoid,glorot,sgd,bce,0,0.1,1e-2,0.95,0.9
+24,4,tanh,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.0,0.9
+
+# --- C. Hidden Activation ---------------------------------------------------
+25,4,sigmoid,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+26,4,relu,sigmoid,glorot,sgd,bce,0,0.5,1e-2,0.85,0.9
+
+# --- D. Loss Function x Capacity --------------------------------------------
+27,4,tanh,sigmoid,glorot,sgd,mse,0,0.5,1e-2,0.85,0.9
+28,8,tanh,sigmoid,glorot,sgd,mse,0,0.5,1e-2,0.85,0.9
+
+# --- E. Weight Initialization -----------------------------------------------
+29,4,tanh,sigmoid,lecun,sgd,bce,0,0.5,1e-2,0.85,0.9
+30,4,tanh,sigmoid,he,sgd,bce,0,0.5,1e-2,0.85,0.9
+31,4,tanh,sigmoid,random,sgd,bce,0,0.5,1e-2,0.85,0.9

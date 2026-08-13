@@ -1,0 +1,10 @@
+# Weight initialization
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+0,128-128-128-128-128,relu,linear,he,adam,mse,0,0.003,1e-3,0.0,0.9
+1,128-128-128-128-128,relu,linear,glorot,adam,mse,0,0.003,1e-3,0.0,0.9
+2,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,1e-3,0.0,0.9
+3,128-128-128-128-128,relu,linear,random,adam,mse,0,0.003,1e-3,0.0,0.9
+4,256-128-64,tanh,linear,he,adam,mse,0,0.003,3e-4,0.0,0.9
+5,256-128-64,tanh,linear,glorot,adam,mse,0,0.003,3e-4,0.0,0.9
+6,256-128-64,tanh,linear,lecun,adam,mse,0,0.003,3e-4,0.0,0.9
+7,256-128-64,tanh,linear,random,adam,mse,0,0.003,3e-4,0.0,0.9

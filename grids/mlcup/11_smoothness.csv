@@ -1,0 +1,16 @@
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+
+# --- A. Eta x Beta1 ---------------------------------------------------------
+0,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.001,1e-3,0.0,0.9
+1,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,1e-3,0.0,0.9
+2,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.01,1e-3,0.0,0.9
+3,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.001,1e-3,0.0,0.95
+4,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,1e-3,0.0,0.95
+5,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.01,1e-3,0.0,0.95
+
+# --- B. Extreme Damping -------------------------------------------------
+6,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,1e-3,0.0,0.99
+
+# --- C. Regularization as Damper ------------------------------------------
+7,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,3e-3,0.0,0.95
+8,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.01,3e-3,0.0,0.95

@@ -71,6 +71,7 @@ testing/
 .cache/
 artifacts/
 logs/
+docs/
 grids/*_test.csv
 
 # VSCode

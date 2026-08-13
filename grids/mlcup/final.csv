@@ -1,0 +1,2 @@
+id,net,hidden,output,init,opt,loss,batch,eta,lambda,alpha,beta1
+0,128-128-128-128-128,relu,linear,lecun,adam,mse,0,0.003,1e-3,0.0,0.9

@@ -89,7 +89,7 @@ $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --inner-k $INNER_K --outer-k $OUTER_K \
     --updates $UPDATES --patience $PATIENCE --warmup $WARMUP \
     --normalization $NORMALIZATION --stopping $STOPPING \
-    --dump >> $LOGS_DIR/"$NAME".log &
+    --dump > $LOGS_DIR/"$NAME".log &
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &
