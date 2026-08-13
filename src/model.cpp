@@ -181,7 +181,7 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     if (!dump_file.is_open()) {
         throw std::runtime_error("Failed to open " + file.string() + " for writing.");
     }
-    std::print("\n- Dumping model to: {}", file.string());
+    std::println("- Dumping model to: {}", file.string());
 
     write_data(dump_file, MAGIC);
     write_data(dump_file, static_cast<std::uint32_t>(sizeof(Scalar)));

@@ -378,8 +378,6 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
         if (early_stop_flag || auto_early_stop_flag) {
             if (early_stop_flag) {
                 std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
-            } else {
-                std::println("\n[Automatic Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             }
             break;
         }

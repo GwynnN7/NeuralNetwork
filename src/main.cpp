@@ -21,6 +21,9 @@
 #include <vector>
 
 void train(const Dataset& dataset, const Args& args) {
+    // Start time of the entire training
+    const auto train_start = std::chrono::steady_clock::now();
+
     // Handles the splitting of the dataset into folds
     const Splitter splitter{dataset, args};
 
@@ -33,10 +36,15 @@ void train(const Dataset& dataset, const Args& args) {
     // Best model for each outer fold
     std::vector<Model> best_models;
     best_models.reserve(outer_folds.size());
+    // Time cost of model selection
+    TimingSummary selection_timing;
 
     // Loop for outer cross-validation (or single fold if outer_folds == 1)
     for (size_t i = 0; i < outer_folds.size(); ++i) {
         const int outer_index = static_cast<int>(i);
+        if (i == 0) {
+            std::println("\n---------------------------------------");
+        }
 
         // Get the inner folds splits (not used if not in model selection, so if only one model is provided)
         std::vector<DataSplit> inner_folds = splitter.get(args.inner_folds, &outer_folds[i].train_indices);
@@ -78,7 +86,9 @@ void train(const Dataset& dataset, const Args& args) {
                 }
             }
 
-            model_summary.print(dataset.task == TaskType::CLASSIFICATION, "Validation");
+            model_summary.print(dataset.task == TaskType::CLASSIFICATION, "Split Summary", "Validation");
+            // Add the duration of all inner folds and trials of this model
+            selection_timing.concat(model_summary.timing);
 
             // Calculate the average score of the model across all inner folds and trials
             const SelectionScore average_score = SelectionScore::average_scores(model_scores);
@@ -92,7 +102,8 @@ void train(const Dataset& dataset, const Args& args) {
 
         best_models.push_back(best_model);
         if (in_model_selection) {
-            std::println("\nRetraining the best model for Outer Fold {}: Model {}", outer_index, best_models[i].id);
+            std::println("\n---------------------------------------");
+            std::println("Retraining Best Model {}, Outer Fold {}", best_models[i].id, outer_index);
         }
         best_models[i].print(epochs_for(args.updates, best_models[i].batch_size, static_cast<int>(outer_folds[i].train_indices.size())));
 
@@ -135,17 +146,57 @@ void train(const Dataset& dataset, const Args& args) {
         throw std::runtime_error("No models were found during training");
     }
 
-    // Print the summary of the best models found for each outer fold
-    std::println("\n[Best Models Summary]");
+    // --- Best Models Summary per Fold ---
+    std::println("\n---------------------");
+    std::println("[Best Models Summary]");
     const bool track_accuracy = (dataset.task == TaskType::CLASSIFICATION);
+    TimingSummary retrain_timing;
     for (size_t i = 0; i < best_models.size(); ++i) {
-        std::println("\n • Fold {}: Model {}", i, best_models[i].id);
-        best_models[i].final_summary.value().print(track_accuracy, "Test");
+        const SplitSummary& fold_summary = best_models[i].final_summary.value();
+        fold_summary.print(track_accuracy, std::format("Fold {}: Model {}", i, best_models[i].id), "Test");
+        retrain_timing.concat(fold_summary.timing);
     }
+    // ------------------------------------
+
+    // --- Final Assessment across Folds ---
+    auto fold_ids = best_models | std::views::transform(&Model::id) | std::ranges::to<std::vector>();
+    std::ranges::sort(fold_ids);
+    const size_t configurations = fold_ids.size() - std::ranges::unique(fold_ids).size();
+
+    const auto split_assessment = [&](const char* label, auto&& metrics) {
+        RunSummary split_summary;
+        for (const Model& model : best_models) {
+            const RunSummary* summary = metrics(model);
+            if (summary && !summary->empty()) {
+                split_summary.add(*summary);
+            }
+        }
+        std::println(" • {} Set:", label);
+        split_summary.print(track_accuracy);
+    };
+
+    std::println("\n-------------------------------------------------------------------");
+    std::println("[Final Assessment] ({} outer fold(s), {} different configuration(s))", best_models.size(), configurations);
+    split_assessment("Training", [](const Model& m) { return m.final_summary ? &m.final_summary->training : nullptr; });
+    split_assessment("Validation", [](const Model& m) { return &m.summary.holdout; });
+    split_assessment("Test", [](const Model& m) { return m.final_summary ? &m.final_summary->holdout : nullptr; });
+    // --------------------------------------
+
+    // --- Timing Summary ---
+    std::println("\n[Compute Time]");
+    if (!selection_timing.empty()) {
+        std::println(" • Model Selection: {:.2f}s, {} run(s)", selection_timing.total(), selection_timing.seconds.size());
+    }
+    if (!retrain_timing.empty()) {
+        std::println(" • Best Model Retrain: {:.2f}s, {} run(s)", retrain_timing.total(), retrain_timing.seconds.size());
+    }
+    const Scalar entire_run = std::chrono::duration<Scalar>(std::chrono::steady_clock::now() - train_start).count();
+    std::println(" • Entire Run: {} minutes and {} seconds", static_cast<int>(entire_run) / 60, static_cast<int>(entire_run) % 60);
+    // ----------------------
 
     // Dump the best model
     if (args.dump) {
-        std::print("\n[Dumping Final Model]");
+        std::println("\n[Dumping Final Model]");
         set_trial_seed(args.seed, 0, -1);
 
         std::unordered_map<int, int> models_occurrencies{};
@@ -157,7 +208,7 @@ void train(const Dataset& dataset, const Args& args) {
         const Model& final_model = *std::ranges::find(best_models, most_frequent->first, &Model::id);
 
         if (std::ranges::any_of(best_models, [&](const Model& m) { return m.id != final_model.id; })) {
-            std::println("\nOuter folds disagreed on the configuration; using most frequent model (Model {})", final_model.id);
+            std::println("Outer folds disagreed on the configuration. Using most frequent model (Model {})", final_model.id);
         }
 
         DataSplit split;
@@ -172,9 +223,9 @@ void train(const Dataset& dataset, const Args& args) {
         std::optional<Scalar> stop_at_error;
         if (args.stopping_rule == StoppingRule::ERROR && target_error.mean > 0) {
             stop_at_error = target_error.mean;
-            std::println("\nStopping the final retrain at the retrained training error level: {:.3f}", target_error.mean);
+            std::println("Stopping the final retrain at the retrained training error level: {:.3f}", target_error.mean);
         } else {
-            std::println("\nStopping the final retrain on the {} rule", Lookup::name_of(Lookup::stopping_rules, args.stopping_rule));
+            std::println("Stopping the final retrain on the {} rule", Lookup::name_of(Lookup::stopping_rules, args.stopping_rule));
         }
 
         // Instantiate the network for the current model and the training context
@@ -189,8 +240,9 @@ void train(const Dataset& dataset, const Args& args) {
         }();
 
         // Train and dump the final model
-        final_network.train(dataset, split, ctx);
+        const RunCurves final_run = final_network.train(dataset, split, ctx);
         Serializer::dump_model(std::format("{}/final.bin", MODEL_PATH), final_model, final_network);
+        std::println(" • Final Model Training: {:.2f}s, {} epochs", final_run.duration, final_run.training.size());
     }
 }
 
@@ -287,12 +339,12 @@ void test(const Dataset& dataset, const Args&) {
         SplitSummary summary;
         summary.add_run(Metrics::evaluate(train_labels, network->predict(train_features), loss, track_accuracy),
                         Metrics::evaluate(test_labels, network->predict(test_features), loss, track_accuracy));
-        summary.print(track_accuracy, has_test_split ? "Test" : "Dataset");
+        summary.print(track_accuracy, "Prediction Summary", has_test_split ? "Test" : "Dataset");
     }
 }
 
 int main(int argc, char* argv[]) {
-    std::println("\n\n[Neural Network Framework]");
+    std::println("[Neural Network Framework]");
 
     std::signal(SIGUSR1, handle_signal);
     std::signal(SIGUSR2, handle_finish_signal);
@@ -302,6 +354,16 @@ int main(int argc, char* argv[]) {
 
         MODEL_PATH = "artifacts/" + args.name;
         std::filesystem::create_directories(MODEL_PATH);
+
+        // Delete any existing curves logs
+        if (args.train) {
+            for (const auto& entry : std::filesystem::directory_iterator(MODEL_PATH)) {
+                const std::string filename = entry.path().filename().string();
+                if (entry.is_regular_file() && filename.starts_with("outer") && filename.contains("_m") && filename.ends_with(".csv")) {
+                    std::filesystem::remove(entry.path());
+                }
+            }
+        }
 
         // Set the random seed for splitting the dataset
         set_split_seed(static_cast<unsigned int>(args.seed));
