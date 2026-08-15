@@ -130,9 +130,15 @@ OUT inline std::vector<CsvRow> load_csv(const std::string& filename, char delimi
     while (std::getline(file, line)) {
         line_number++;
 
-        // Skip empty lines, lines that contain only whitespace, and '#' comments
+        // Delete any comment from the line
+        const size_t comment = line.find('#');
+        if (comment != std::string::npos) {
+            line.erase(comment);
+        }
+
+        // Skip empty lines, lines that contain only whitespace, and lines that were only a comment
         const size_t first_char = line.find_first_not_of(" \t\r");
-        if (first_char == std::string::npos || line[first_char] == '#') {
+        if (first_char == std::string::npos) {
             continue;
         }
 

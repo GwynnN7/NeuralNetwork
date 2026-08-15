@@ -24,7 +24,17 @@ inline Matrix relu(const Matrix& net) {
 
 // f'(net) = 1 if net > 0, else 0
 inline Matrix relu_derivative(const Matrix& net) {
-    return (net.array() > Scalar(0)).template cast<Scalar>();
+    return (net.array() > Scalar(0)).select(Matrix::Ones(net.rows(), net.cols()), Matrix::Zero(net.rows(), net.cols()));
+}
+
+// f(net) = net if net > 0, else LEAKY_NEG * net
+inline Matrix leaky_relu(const Matrix& net) {
+    return (net.array() > Scalar(0)).select(net, net * LEAKY_NEG);
+}
+
+// f'(net) = 1 if net > 0, else LEAKY_NEG
+inline Matrix leaky_relu_derivative(const Matrix& net) {
+    return (net.array() > Scalar(0)).select(Matrix::Ones(net.rows(), net.cols()), Matrix::Constant(net.rows(), net.cols(), LEAKY_NEG));
 }
 
 // f(net) = (e^net - e^(-net)) / (e^net + e^(-net)) = tanh(net)
@@ -124,11 +134,12 @@ constexpr bool includes_output_derivative(LossType loss) noexcept {
 
 // Lookup tables for activation and loss functions
 namespace Lookup {
-inline constexpr std::array<std::pair<ActivationType, ActivationPair>, 5> activation_functions{{
-    {ActivationType::SIGMOID, {ActivationFunctions::sigmoid, ActivationFunctions::sigmoid_derivative}},
-    {ActivationType::RELU, {ActivationFunctions::relu, ActivationFunctions::relu_derivative}},
-    {ActivationType::TANH, {ActivationFunctions::tanh_activation, ActivationFunctions::tanh_derivative}},
+inline constexpr std::array<std::pair<ActivationType, ActivationPair>, 6> activation_functions{{
     {ActivationType::LINEAR, {ActivationFunctions::linear, ActivationFunctions::linear_derivative}},
+    {ActivationType::SIGMOID, {ActivationFunctions::sigmoid, ActivationFunctions::sigmoid_derivative}},
+    {ActivationType::TANH, {ActivationFunctions::tanh_activation, ActivationFunctions::tanh_derivative}},
+    {ActivationType::RELU, {ActivationFunctions::relu, ActivationFunctions::relu_derivative}},
+    {ActivationType::LEAKY_RELU, {ActivationFunctions::leaky_relu, ActivationFunctions::leaky_relu_derivative}},
     {ActivationType::SOFTMAX, {ActivationFunctions::softmax, ActivationFunctions::softmax_derivative}},
 }};
 

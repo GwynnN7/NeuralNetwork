@@ -60,7 +60,7 @@ class Network {
     void restoreParameters();
 
     Matrix forward(const Matrix& input);
-    void backward(const Matrix& output_gradient, Scalar batch_fraction);
+    void backward(const Matrix& output_gradient, Scalar decay_fraction);
 
   public:
     explicit Network(const Model& model);

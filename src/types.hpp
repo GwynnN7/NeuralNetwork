@@ -89,19 +89,22 @@ inline constexpr Scalar TARGET_ETA_MULTIPLIER = 0.01;
 // Define a multiplier for the tau parameter for learning rate linear decay
 inline constexpr Scalar TAU_MULTIPLIER = 0.8;
 
-// Number of hyperparameter columns required in the grid-search CSV. 12th column (beta1) is optional and defaults to ADAM_B1
+// Number of hyperparameter columns required in the grid-search CSV. The 12th column (beta) is optional
 inline constexpr int HYPERPARAMS_NUM = 11;
 inline constexpr int HYPERPARAMS_NUM_OPT = 12;
 
-// Default beta1/beta2 parameters for the Adam optimizer
-inline constexpr Scalar ADAM_B1 = 0.9;
+// Default second moment parameter for the Adam optimizer
 inline constexpr Scalar ADAM_B2 = 0.999;
 
+// Negative part of Leaky ReLU
+inline constexpr Scalar LEAKY_NEG = 0.01;
+
 enum class ActivationType {
-    RELU,
+    LINEAR,
     SIGMOID,
     TANH,
-    LINEAR,
+    RELU,
+    LEAKY_RELU,
     SOFTMAX
 };
 
@@ -176,18 +179,19 @@ constexpr std::optional<T> value_of(const NameTable<T, N>& table, std::string_vi
     return entry != table.end() ? std::optional<T>(entry->first) : std::nullopt;
 }
 
-inline constexpr NameTable<ActivationType, 5> activations{{
-    {ActivationType::RELU, "relu"},
+inline constexpr NameTable<ActivationType, 6> activations{{
+    {ActivationType::LINEAR, "linear"},
     {ActivationType::SIGMOID, "sigmoid"},
     {ActivationType::TANH, "tanh"},
-    {ActivationType::LINEAR, "linear"},
+    {ActivationType::RELU, "relu"},
+    {ActivationType::LEAKY_RELU, "leaky_relu"},
     {ActivationType::SOFTMAX, "softmax"},
 }};
 
 inline constexpr NameTable<OptimizerType, 3> optimizers{{
     {OptimizerType::SGD, "sgd"},
-    {OptimizerType::ADAM, "adam"},
     {OptimizerType::RMSPROP, "rmsprop"},
+    {OptimizerType::ADAM, "adam"},
 }};
 
 inline constexpr NameTable<LossType, 4> losses{{
@@ -235,18 +239,19 @@ inline constexpr NameTable<NormalizationType, 4> normalizations{{
     {NormalizationType::Z_SCORE, "zscore"},
 }};
 
-inline constexpr NameTable<ActivationType, 5> activation_labels{{
-    {ActivationType::RELU, "ReLU"},
+inline constexpr NameTable<ActivationType, 6> activation_labels{{
+    {ActivationType::LINEAR, "Linear"},
     {ActivationType::SIGMOID, "Sigmoid"},
     {ActivationType::TANH, "Tanh"},
-    {ActivationType::LINEAR, "Linear"},
+    {ActivationType::RELU, "ReLU"},
+    {ActivationType::LEAKY_RELU, "Leaky ReLU"},
     {ActivationType::SOFTMAX, "Softmax"},
 }};
 
 inline constexpr NameTable<OptimizerType, 3> optimizer_labels{{
     {OptimizerType::SGD, "SGD"},
-    {OptimizerType::ADAM, "Adam"},
     {OptimizerType::RMSPROP, "RMSProp"},
+    {OptimizerType::ADAM, "Adam"},
 }};
 
 inline constexpr NameTable<LossType, 4> loss_labels{{

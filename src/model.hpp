@@ -22,10 +22,10 @@ struct Model {
     LossType loss_type = LossType::MSE;
 
     int batch_size = 0;
-    Scalar eta = 0.0;       // Learning rate
-    Scalar lambda = 0.0;    // L2 regularization
-    Scalar alpha = 0.0;     // SGD's momentum || RMSProp's first moment
-    Scalar beta1 = ADAM_B1; // Adam's first moment
+    Scalar eta = 0.0;      // Learning rate
+    Scalar lambda = 0.0;   // L2 regularization
+    Scalar alpha = 0.0;    // SGD's momentum (α) || RMSProp's first moment (β) || Adam's first moment (β1)
+    Scalar beta = ADAM_B2; // Adam's second moment (β2), not used by the other optimizers
 
     // Runtime parameters, not part of model selection
     TaskType task = TaskType::REGRESSION;

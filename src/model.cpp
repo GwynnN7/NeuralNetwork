@@ -30,7 +30,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         const std::vector<std::string>& row = csv_row.cells;
         const int row_number = csv_row.line;
 
-        // Validate that the row has the expected number of columns. The 12th (beta1) column is optional
+        // Validate that the row has the expected number of columns. The 12th (beta) column is optional
         if (row.size() != HYPERPARAMS_NUM && row.size() != HYPERPARAMS_NUM_OPT) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": invalid number of columns");
         }
@@ -71,7 +71,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         model.eta = parse_cell<Scalar>(row[8], filename, row_number, "eta");
         model.lambda = parse_cell<Scalar>(row[9], filename, row_number, "lambda");
         model.alpha = parse_cell<Scalar>(row[10], filename, row_number, "alpha");
-        model.beta1 = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_cell<Scalar>(row[11], filename, row_number, "beta1") : ADAM_B1;
+        model.beta = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_cell<Scalar>(row[11], filename, row_number, "beta") : ADAM_B2;
 
         // Avoid out-of-range hyperparameters
         if (model.batch_size < 0) {
@@ -86,8 +86,8 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         if (model.alpha < 0 || model.alpha >= 1) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": alpha must be in [0, 1)");
         }
-        if (model.beta1 < 0 || model.beta1 >= 1) {
-            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": beta1 must be in [0, 1)");
+        if (model.beta < 0 || model.beta >= 1) {
+            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": beta must be in [0, 1)");
         }
 
         grid_search.push_back(model);
@@ -117,9 +117,17 @@ void Model::print(int epochs) const {
     std::println(" • {:<25}{}", "Batch Size:", batch_size);
     std::println(" • {:<25}{}", "Learning Rate:", eta);
     std::println(" • {:<25}{}", "Regularization:", lambda);
-    std::println(" • {:<25}{}", "Momentum:", alpha);
-    if (opt_type == OptimizerType::ADAM) {
-        std::println(" • {:<25}{}", "Adam Beta1:", beta1);
+    switch (opt_type) {
+    case OptimizerType::SGD:
+        std::println(" • {:<25}{}", "α (alpha):", alpha);
+        break;
+    case OptimizerType::RMSPROP:
+        std::println(" • {:<25}{}", "β (alpha):", alpha);
+        break;
+    case OptimizerType::ADAM:
+        std::println(" • {:<25}{}", "β1 (alpha):", alpha);
+        std::println(" • {:<25}{}", "β2 (beta):", beta);
+        break;
     }
     std::println(" • {:<25}{}", "Hidden Activation:", Lookup::name_of(Lookup::activations, hidden_activation));
     std::println(" • {:<25}{}", "Output Activation:", Lookup::name_of(Lookup::activations, output_activation));
@@ -133,6 +141,7 @@ void Model::print(int epochs) const {
 namespace Serializer {
 namespace {
 constexpr std::uint32_t MAGIC = 0x4D434E54; // "MCNT" in hex
+constexpr std::uint32_t VERSION = 2;
 
 // Write a value of type T to the output stream in binary format
 template <typename T>
@@ -184,6 +193,7 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     std::println("- Dumping model to: {}", file.string());
 
     write_data(dump_file, MAGIC);
+    write_data(dump_file, VERSION);
     write_data(dump_file, static_cast<std::uint32_t>(sizeof(Scalar)));
 
     // Enums are serialized as their integer values
@@ -242,6 +252,10 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
     try {
         if (read_data<std::uint32_t>(dump_file, "magic number") != MAGIC) {
             return std::unexpected("not a model file (bad magic number)");
+        }
+        const std::uint32_t version = read_data<std::uint32_t>(dump_file, "format version");
+        if (version != VERSION) {
+            return std::unexpected(std::format("written for version v{}, reading version v{}", version, VERSION));
         }
         // Check the scalar type used in the dumped model
         const std::uint32_t scalar_size = read_data<std::uint32_t>(dump_file, "scalar size");

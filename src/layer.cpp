@@ -113,7 +113,7 @@ Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
 }
 
 // Backward pass through the DenseLayer, updating weights and biases based on the output gradient
-Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) {
+Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) {
     const int batch_size = static_cast<int>(X.cols());
     // Calculate the gradient updates: dE/dw_tu = (1 / mb) * sum_p(dE/dnet_t * dnet_t/dw_tu) = (1 / mb) * sum_p(delta_t * o_u)
     Matrix weights_delta = (output_gradient * X.transpose()) / batch_size; // dE/dw_tu = (1 / mb) * sum_p(dE/dnet_t * o_u)
@@ -127,7 +127,7 @@ Matrix DenseLayer::backward(const Matrix& output_gradient, const Model& model, S
     }
 
     // Update weights and biases using the optimizer
-    optimizer->update(params, Parameters(weights_delta, bias_delta), model, batch_fraction);
+    optimizer->update(params, Parameters(weights_delta, bias_delta), model, decay_fraction);
 
     return input_gradient;
 }

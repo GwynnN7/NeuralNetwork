@@ -26,7 +26,7 @@ class Layer {
   public:
     virtual ~Layer() = default;
     virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
-    virtual Matrix backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) = 0;
+    virtual Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) = 0;
 
     // Snapshot and restore the layer's parameters in early stopping
     virtual void takeSnapshot() {}
@@ -64,7 +64,7 @@ class DenseLayer final : public Layer {
     DenseLayer(Parameters params, OptimizerType opt_type, bool instantiate_optimizer);
 
     Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) override;
+    Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) override;
 
     void takeSnapshot() override { snapshot = params; }
     void restoreSnapshot() override {
@@ -85,5 +85,5 @@ class ActivationLayer final : public Layer {
     explicit ActivationLayer(ActivationType activation_type, bool derivative_in_loss = false);
 
     Matrix forward(const Matrix& input_matrix, bool training) override;
-    Matrix backward(const Matrix& output_gradient, const Model& model, Scalar batch_fraction, bool is_first_layer) override;
+    Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) override;
 };
