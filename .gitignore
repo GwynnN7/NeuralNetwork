@@ -69,9 +69,12 @@ __pycache__/
 Testing/
 testing/
 .cache/
+
+# custom
 artifacts/
 logs/
 docs/
+plots/
 grids/*_test.csv
 
 # VSCode

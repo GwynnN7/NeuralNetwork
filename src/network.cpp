@@ -155,11 +155,11 @@ Matrix Network::forward(const Matrix& input) {
 }
 
 // Training backward pass, propagates the gradient from the error to the first layer.
-void Network::backward(const Matrix& output_gradient, Scalar batch_fraction) {
+void Network::backward(const Matrix& output_gradient, Scalar decay_fraction) {
     Matrix gradient = output_gradient;
     for (auto& layer : layers | std::views::reverse) {
         const bool is_first_layer = (&layer == &layers.front());
-        gradient = layer->backward(gradient, model, batch_fraction, is_first_layer);
+        gradient = layer->backward(gradient, model, decay_fraction, is_first_layer);
     }
 }
 
@@ -310,7 +310,7 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
 
         // --- Training loop over batches ---
         LearningCurve batch_curve;
-        for (int j = 0; j < num_batches && !early_stop_flag; j++) {
+        for (int j = 0; j < num_batches && !early_stop_flag && !finish_flag; j++) {
             // Determine the starting index and size for the current batch
             const int index_start = j * current_batch_size;
             const int actual_batch_size = std::min(index_start + current_batch_size, input_size) - index_start;
@@ -323,8 +323,8 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             Matrix batch_prediction = forward(batch_features);
             batch_curve.add_batch(batch_labels, batch_prediction, model.loss_type, curves.track_accuracy());
 
-            const Scalar batch_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
-            backward(loss_pair.derivative(labels_norm.apply(batch_labels), labels_norm.apply(batch_prediction)), batch_fraction);
+            const Scalar decay_fraction = static_cast<Scalar>(actual_batch_size) / static_cast<Scalar>(input_size);
+            backward(loss_pair.derivative(labels_norm.apply(batch_labels), labels_norm.apply(batch_prediction)), decay_fraction);
         }
         curves.training.append_epochs(batch_curve);
         curves.training.normalize_epoch();
@@ -375,9 +375,9 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
             flush_log(i);
         }
 
-        if (early_stop_flag || auto_early_stop_flag) {
-            if (early_stop_flag) {
-                std::println("\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
+        if (early_stop_flag || finish_flag || auto_early_stop_flag) {
+            if (early_stop_flag || finish_flag) {
+                std::println(stderr, "\n[Manual Early stopping: Inner Fold {} | Outer Fold {} | Epoch {}]", ctx.in_model_selection ? ctx.inner_index : -1, ctx.outer_index, i);
             }
             break;
         }
