@@ -4,6 +4,7 @@ import re
 import sys
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, RadioButtons
@@ -38,8 +39,16 @@ def load(path):
 
 
 class Runs:
+    DIVERGED = 1e6
+
     def __init__(self, df, retrain):
         pivots = {c: df.pivot_table(index="epoch", columns=["fold", "trial"], values=c) for c in METRICS}
+        reference = pivots["train_error"]
+        valid = [c for c in reference.columns
+                 if np.isfinite(reference[c].dropna()).all() and reference[c].abs().max() < Runs.DIVERGED]
+        self.dropped = len(reference.columns) - len(valid)
+        if valid:
+            pivots = {c: p[valid] for c, p in pivots.items()}
         live = next(iter(pivots.values())).notna().sum(axis=1)
         self.count = int(live.max())
         filled = {c: p.ffill() for c, p in pivots.items()}
@@ -49,6 +58,11 @@ class Runs:
         if retrain and complete.any():
             self.mean = self.mean[complete]
             self.sd = self.sd[complete]
+        elif not retrain:
+            enough = (live >= max(1, self.count / 2)).to_numpy()
+            if enough.any():
+                self.mean = self.mean[enough]
+                self.sd = self.sd[enough]
         self.folds = df["fold"].nunique()
         self.trials = df["trial"].nunique()
         self.best = self.mean["train_error" if retrain else "test_error"].idxmin()
@@ -56,7 +70,9 @@ class Runs:
     def draw(self, ax, col, style, label, mark=None):
         color, linestyle, marker = style
         epoch = self.mean["epoch"]
-        ax.fill_between(epoch, self.mean[col] - self.sd[col], self.mean[col] + self.sd[col],
+        positive = self.mean[col][self.mean[col] > 0]
+        floor = positive.min() * 1e-3 if len(positive) else 1e-12
+        ax.fill_between(epoch, (self.mean[col] - self.sd[col]).clip(lower=floor), self.mean[col] + self.sd[col],
                         color=color, alpha=BAND_ALPHA, linewidth=0)
         ax.plot(epoch, self.mean[col], color=color, linewidth=1.5,
                 linestyle=linestyle, label=label,
