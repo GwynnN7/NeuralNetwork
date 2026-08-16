@@ -16,15 +16,15 @@ fi
 # --------------------
 # Default training parameters
 
-TRIALS=1 # Number of trials to run
+TRIALS=5 # Number of trials to run
 UPDATES=600 # Number of weight updates per run
+WINDOW=20 # Window size for model score calculation
 PATIENCE=75 # Weight updates without improvement before early stopping
 WARMUP=50 # Weight updates spent increasing the learning rate
-INNER_K=1 # Number of folds for inner cross-validation
+INNER_K=5 # Number of folds for inner cross-validation
 OUTER_K=1 # Holdout to use predefined train/test split if available
 
 STOPPING="patience" # Stopping rule: none, error, patience
-NORMALIZATION="zscore" # Normalization method: none, minmax, max, zscore
 DATASET_RATIO=1.0 # Fraction of the dataset to use
 TRAIN_RATIO=0.8 # Fallback for datasets that don't have a predefined train/test split
 SEED=42 # Random seed for reproducibility
@@ -32,11 +32,17 @@ SEED=42 # Random seed for reproducibility
 # Per-dataset overrides
 case "$1" in
 mlcup)
-    UPDATES=12000
+    TRIALS=3
+    INNER_K=5
+    OUTER_K=5
+    UPDATES=25000
+    WINDOW=200
     PATIENCE=1500
+    WARMUP=50
     ;;
 mnist)
     UPDATES=82000
+    WINDOW=200
     PATIENCE=3000
     DATASET_RATIO=0.5
     OUTER_K=3
@@ -79,8 +85,7 @@ $LAUNCHER ./$RELEASE_DIR/NeuralNet "$1" --name "$NAME" --grid $GRID_FILE \
     --dataset_ratio $DATASET_RATIO --train_ratio $TRAIN_RATIO \
     --inner-k $INNER_K --outer-k $OUTER_K \
     --updates $UPDATES --patience $PATIENCE --warmup $WARMUP \
-    --normalization $NORMALIZATION --stopping $STOPPING \
-    --dump > $LOGS_DIR/"$NAME".log &
+    --stopping $STOPPING --window $WINDOW > $LOGS_DIR/"$NAME".log &
 
 run_live_plot() {
     python3 ./scripts/live_plot.py "$NAME" >/dev/null 2>&1 &

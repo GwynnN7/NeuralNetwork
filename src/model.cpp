@@ -66,12 +66,15 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         model.init_type = try_lookup(Lookup::inits, 4, "weight init");
         model.opt_type = try_lookup(Lookup::optimizers, 5, "optimizer");
         model.loss_type = try_lookup(Lookup::losses, 6, "loss");
+        model.norm_type = try_lookup(Lookup::normalizations, 7, "normalization");
 
-        model.batch_size = parse_cell<int>(row[7], filename, row_number, "batch");
-        model.eta = parse_cell<Scalar>(row[8], filename, row_number, "eta");
-        model.lambda = parse_cell<Scalar>(row[9], filename, row_number, "lambda");
-        model.alpha = parse_cell<Scalar>(row[10], filename, row_number, "alpha");
-        model.beta = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_cell<Scalar>(row[11], filename, row_number, "beta") : ADAM_B2;
+        model.batch_size = parse_cell<int>(row[8], filename, row_number, "batch");
+        model.eta = parse_cell<Scalar>(row[9], filename, row_number, "eta");
+        model.lambda = parse_cell<Scalar>(row[10], filename, row_number, "lambda");
+        model.dropout = parse_cell<Scalar>(row[11], filename, row_number, "dropout");
+
+        model.alpha = parse_cell<Scalar>(row[12], filename, row_number, "alpha");
+        model.beta = (row.size() == HYPERPARAMS_NUM_OPT) ? parse_cell<Scalar>(row[13], filename, row_number, "beta") : ADAM_B2;
 
         // Avoid out-of-range hyperparameters
         if (model.batch_size < 0) {
@@ -88,6 +91,9 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         }
         if (model.beta < 0 || model.beta >= 1) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": beta must be in [0, 1)");
+        }
+        if (model.dropout < 0 || model.dropout >= 1) {
+            throw std::runtime_error("Grid row " + std::to_string(row_number) + ": dropout must be in [0, 1)");
         }
 
         grid_search.push_back(model);
@@ -131,6 +137,7 @@ void Model::print(int epochs) const {
     }
     std::println(" • {:<25}{}", "Hidden Activation:", Lookup::name_of(Lookup::activations, hidden_activation));
     std::println(" • {:<25}{}", "Output Activation:", Lookup::name_of(Lookup::activations, output_activation));
+    std::println(" • {:<25}{}", "Normalization:", Lookup::name_of(Lookup::normalizations, norm_type));
     std::println(" • {:<25}{}", "Weight Init:", Lookup::name_of(Lookup::inits, init_type));
     std::println(" • {:<25}{}", "Optimizer:", Lookup::name_of(Lookup::optimizers, opt_type));
     std::println(" • {:<25}{}", "Loss Function:", Lookup::name_of(Lookup::losses, loss_type));
@@ -141,7 +148,7 @@ void Model::print(int epochs) const {
 namespace Serializer {
 namespace {
 constexpr std::uint32_t MAGIC = 0x4D434E54; // "MCNT" in hex
-constexpr std::uint32_t VERSION = 2;
+constexpr std::uint32_t VERSION = 3;
 
 // Write a value of type T to the output stream in binary format
 template <typename T>
@@ -199,6 +206,7 @@ void dump_model(const std::filesystem::path& file, const Model& model, const Net
     // Enums are serialized as their integer values
     write_data(dump_file, static_cast<std::int32_t>(model.hidden_activation));
     write_data(dump_file, static_cast<std::int32_t>(model.output_activation));
+    write_data(dump_file, static_cast<std::int32_t>(model.norm_type));
     write_data(dump_file, static_cast<std::int32_t>(model.opt_type));
     write_data(dump_file, static_cast<std::int32_t>(model.loss_type));
     write_data(dump_file, static_cast<std::int32_t>(model.task));
@@ -275,6 +283,7 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
         Model model{
             .hidden_activation = static_cast<ActivationType>(read_enum("hidden activation", static_cast<int>(ActivationType::SOFTMAX))),
             .output_activation = static_cast<ActivationType>(read_enum("output activation", static_cast<int>(ActivationType::SOFTMAX))),
+            .norm_type = static_cast<NormalizationType>(read_enum("normalization", static_cast<int>(NormalizationType::Z_SCORE))),
             .opt_type = static_cast<OptimizerType>(read_enum("optimizer", static_cast<int>(OptimizerType::ADAM))),
             .loss_type = static_cast<LossType>(read_enum("loss", static_cast<int>(LossType::CCE))),
             .task = static_cast<TaskType>(read_enum("task", static_cast<int>(TaskType::CLASSIFICATION)))};
@@ -340,7 +349,7 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             throw std::runtime_error("Model output size does not match dataset class count");
         }
 
-        auto network = std::make_unique<Network>(model, layers_params, false);
+        auto network = std::make_unique<Network>(model, layers_params);
         network->setNormalizers(std::move(features_norm), std::move(labels_norm));
         return network;
     } catch (const std::exception& e) {

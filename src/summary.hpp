@@ -1,36 +1,15 @@
 #pragma once
 
 #include "metrics.hpp"
+#include "selection.hpp"
 #include "types.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <functional>
 #include <print>
 #include <ranges>
 #include <string>
 #include <vector>
-
-// Mean and sample standard deviation
-struct Stats {
-    Scalar mean = 0;
-    Scalar std = 0;
-
-    // Mean and std of a range of values
-    template <std::ranges::input_range R>
-    OUT static Stats of(R&& values) {
-        const auto count = std::ranges::distance(values);
-        if (count == 0) {
-            return {};
-        }
-        const Scalar mean = std::ranges::fold_left(values, Scalar(0), std::plus{}) / static_cast<Scalar>(count);
-        if (count < 2) {
-            return {mean, 0};
-        }
-        const Scalar var = std::ranges::fold_left(values, Scalar(0), [mean](Scalar acc, Scalar value) { return acc + (value - mean) * (value - mean); });
-        return {mean, std::sqrt(var / static_cast<Scalar>(count - 1))};
-    }
-};
 
 // Collects the best metric of each run
 struct RunSummary {
@@ -154,9 +133,10 @@ struct SplitSummary {
     RunSummary training;
     RunSummary holdout;
     TimingSummary timing;
+    std::vector<SelectionScore> scores; // Best selection scores of each run
 
     // If an entire run is provided, add the best metrics from both training and holdout sets
-    void add_run(const RunCurves& run) {
+    void add_run(const RunCurves& run, int selection_window) {
         // Don't add runs that were interrupted by an inf/NaN error or that have no epochs
         if (run.training.invalid || run.training.empty()) {
             return;
@@ -164,6 +144,7 @@ struct SplitSummary {
         training.add_run(run.training.at(run.best_epoch));
         holdout.add_run(run.holdout.at(run.best_epoch));
         timing.add_run(run.duration, static_cast<int>(run.training.size()));
+        scores.push_back(SelectionScore::from_run(run, selection_window));
     }
 
     // If only one metric is provided, add it as a run
@@ -178,6 +159,12 @@ struct SplitSummary {
         training.print(track_accuracy);
         std::println(" • {} Set:", holdout_name);
         holdout.print(track_accuracy);
+        const SelectionScore avg_score = average_score();
+        std::println(" • Average Score: {:.4f} (main), {:.4f} (tie)", avg_score.main_metric.mean, avg_score.tie_metric.mean);
         timing.print();
+    }
+
+    OUT SelectionScore average_score() const {
+        return SelectionScore::average_scores(scores);
     }
 };

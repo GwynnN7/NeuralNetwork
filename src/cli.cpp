@@ -19,13 +19,13 @@ Args Args::parse(int argc, char* argv[]) {
     app.add_option("dataset", args.dataset_type, "Dataset type")->transform(CLI::CheckedTransformer(Lookup::str_to_dataset, CLI::ignore_case))->required();
     app.add_option("--train_ratio", args.train_ratio, "Training set ratio, exclusive bounds")->default_val(0.85)->check(CLI::Range(0.1, 1.0).description("in (0,1)"));
     app.add_option("--dataset_ratio", args.dataset_ratio, "Subset of dataset used (when applicable)")->default_val(1.0)->check(CLI::Range(0.1, 1.0).description("in (0,1]"));
-    app.add_option("--normalization", args.normalization_type, "Normalization type")->transform(CLI::CheckedTransformer(Lookup::str_to_normalization, CLI::ignore_case))->default_val(NormalizationType::NONE);
 
     // Cross-validation parameters
     app.add_option("--grid", args.grid_file, "File containing model parameters for grid search")->default_val("grids/grid.csv");
     app.add_option("--trials", args.trials, "Random restarts per training run")->default_val(1)->check(CLI::PositiveNumber);
     app.add_option("--inner-k", args.inner_folds, "Number of folds for inner cross-validation")->default_val(1)->check(CLI::PositiveNumber);
     app.add_option("--outer-k", args.outer_folds, "Number of folds for outer cross-validation")->default_val(1)->check(CLI::PositiveNumber);
+    app.add_option("--window", args.selection_window, "Sliding window size used to score models during selection")->default_val(50)->check(CLI::PositiveNumber);
     app.add_flag("--shuffle", args.shuffle, "Shuffle dataset before splitting into folds");
 
     // Configuration parameters

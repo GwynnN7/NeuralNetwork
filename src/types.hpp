@@ -37,6 +37,13 @@ struct LossPair {
     LossDerivative derivative = nullptr;
 };
 
+// Define a small epsilon value used in optimizer denominators
+inline constexpr Scalar EPSILON = 1e-8;
+// Define a small epsilon value to avoid log(0) in loss functions (works for both float and double, *8 is a safety for float)
+inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
+// Define a constant for infinity
+inline constexpr Scalar INF = std::numeric_limits<Scalar>::infinity();
+
 // Structure to hold weights and biases for a layer
 struct Parameters {
     Matrix W;
@@ -70,34 +77,54 @@ struct CsvRow {
     std::vector<std::string> cells;
 };
 
-// Define a small epsilon value used in optimizer denominators
-inline constexpr Scalar EPSILON = 1e-8;
-// Define a small epsilon value to avoid log(0) in loss functions (works for both float and double, *8 is a safety for float)
-inline constexpr Scalar LOSS_EPSILON = std::numeric_limits<Scalar>::epsilon() * 8;
-// Define a constant for infinity
-inline constexpr Scalar INF = std::numeric_limits<Scalar>::infinity();
+// Mean and sample standard deviation
+struct Stats {
+    Scalar mean = 0;
+    Scalar std = 0;
+    std::size_t samples = 0;
+
+    // Mean and std of a range of values
+    template <std::ranges::input_range R>
+    OUT static Stats of(R&& values) {
+        const std::size_t count = std::ranges::distance(values);
+        if (count == 0) {
+            return {};
+        }
+        const Scalar mean = std::ranges::fold_left(values, Scalar(0), std::plus{}) / static_cast<Scalar>(count);
+        if (count < 2) {
+            return {mean, 0, count};
+        }
+        const Scalar var = std::ranges::fold_left(values, Scalar(0), [mean](Scalar acc, Scalar value) { return acc + (value - mean) * (value - mean); });
+        return {mean, std::sqrt(var / static_cast<Scalar>(count - 1)), count};
+    }
+
+    OUT static Stats inf() { return {INF, INF, 0}; }
+};
 
 // Define a relative tolerance for early stopping
 inline constexpr Scalar ES_TOLERANCE = 0.001;
 // Define the frequency of logging metrics to a file during training
 inline constexpr int LOG_FREQ = 25;
-// Sliding window to score models during model selection
-inline constexpr int SELECTION_WINDOW = 20;
 
 // Define a multiplier for the target learning rate in linear decay
 inline constexpr Scalar TARGET_ETA_MULTIPLIER = 0.01;
 // Define a multiplier for the tau parameter for learning rate linear decay
 inline constexpr Scalar TAU_MULTIPLIER = 0.8;
 
-// Number of hyperparameter columns required in the grid-search CSV. The 12th column (beta) is optional
-inline constexpr int HYPERPARAMS_NUM = 11;
-inline constexpr int HYPERPARAMS_NUM_OPT = 12;
+// Number of hyperparameter columns required in the grid-search CSV. The 14th column (beta) is optional
+inline constexpr int HYPERPARAMS_NUM = 13;
+inline constexpr int HYPERPARAMS_NUM_OPT = 14;
 
 // Default second moment parameter for the Adam optimizer
 inline constexpr Scalar ADAM_B2 = 0.999;
 
 // Negative part of Leaky ReLU
 inline constexpr Scalar LEAKY_NEG = 0.01;
+
+enum class NetworkMode {
+    TRAIN,
+    TEST
+};
 
 enum class ActivationType {
     LINEAR,

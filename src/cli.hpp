@@ -11,7 +11,6 @@ struct Args {
 
     // Dataset parameters
     DatasetType dataset_type;
-    NormalizationType normalization_type;
     Scalar train_ratio;
     Scalar dataset_ratio;
 
@@ -20,6 +19,7 @@ struct Args {
     int trials;
     int inner_folds;
     int outer_folds;
+    int selection_window;
     bool shuffle = false;
 
     // Configuration parameters

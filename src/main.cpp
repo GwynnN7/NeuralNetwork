@@ -81,8 +81,7 @@ void train(const Dataset& dataset, const Args& args) {
 
                     // Train the model on the current inner fold
                     const RunCurves run = network.train(dataset, inner_folds[j], ctx);
-                    model_scores.push_back(SelectionScore::from_run(run));
-                    model_summary.add_run(run);
+                    model_summary.add_run(run, args.selection_window);
                 }
             }
 
@@ -91,7 +90,7 @@ void train(const Dataset& dataset, const Args& args) {
             selection_timing.concat(model_summary.timing);
 
             // Calculate the average score of the model across all inner folds and trials
-            const SelectionScore average_score = SelectionScore::average_scores(model_scores);
+            const SelectionScore average_score = model_summary.average_score();
             // Keep the model with the best final score
             if (m == 0 || (average_score < best_model.score)) {
                 best_model = grid_model;
@@ -133,7 +132,7 @@ void train(const Dataset& dataset, const Args& args) {
             }();
 
             const RunCurves run = best_fold_network.train(dataset, outer_folds[i], ctx);
-            best_models[i].final_summary.value().add_run(run);
+            best_models[i].final_summary.value().add_run(run, args.selection_window);
         }
 
         if (finish_flag) {
@@ -378,7 +377,7 @@ int main(int argc, char* argv[]) {
             test(dataset, args);
         }
     } catch (const std::exception& e) {
-        std::println(stderr, "\n[Fatal Error] {}", e.what());
+        std::println(stderr, "\nError: {}", e.what());
         return 1;
     }
 

@@ -17,6 +17,7 @@ struct Model {
 
     ActivationType hidden_activation = ActivationType::RELU;
     ActivationType output_activation = ActivationType::LINEAR;
+    NormalizationType norm_type = NormalizationType::NONE;
     InitType init_type = InitType::GLOROT;
     OptimizerType opt_type = OptimizerType::SGD;
     LossType loss_type = LossType::MSE;
@@ -24,6 +25,7 @@ struct Model {
     int batch_size = 0;
     Scalar eta = 0.0;      // Learning rate
     Scalar lambda = 0.0;   // L2 regularization
+    Scalar dropout = 0.0;  // Dropout probability
     Scalar alpha = 0.0;    // SGD's momentum (α) || RMSProp's first moment (β) || Adam's first moment (β1)
     Scalar beta = ADAM_B2; // Adam's second moment (β2), not used by the other optimizers
 

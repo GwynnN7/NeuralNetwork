@@ -23,35 +23,38 @@ Network::Network(const Model& model) : model(model) {
 
 // Network constructor that calls the layers building function with the specified number of features and classes
 Network::Network(const Model& model, int num_features, int num_classes) : Network(model) {
-    buildLayers(model, num_features, num_classes, nullptr, true);
+    buildLayers(model, num_features, num_classes, nullptr, NetworkMode::TRAIN);
 }
 
 // Network constructor that calls the layers building function with the specified weights and biases for each layer
-Network::Network(const Model& model, const std::vector<Parameters>& params, bool instantiate_optimizer) : Network(model) {
+Network::Network(const Model& model, const std::vector<Parameters>& params) : Network(model) {
     if (params.size() != model.net_struct.size() + 1) {
         throw std::invalid_argument("Mismatch between the number of parameter sets and layers in the model");
     }
-    buildLayers(model, static_cast<int>(params.front().W.cols()), static_cast<int>(params.back().W.rows()), &params, instantiate_optimizer);
+    buildLayers(model, static_cast<int>(params.front().W.cols()), static_cast<int>(params.back().W.rows()), &params, NetworkMode::TEST);
 }
 
 // Function that builds each layer of the network, either loaded or initialized
-void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, bool instantiate_optimizer) {
+void Network::buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, NetworkMode mode) {
     validateModel(model, num_features, num_classes);
 
     for (size_t i = 0; i < model.net_struct.size(); ++i) {
         // Add a DenseLayer and an ActivationLayer for each layer in the network structure
         if (params != nullptr) {
-            addLayer(std::make_unique<DenseLayer>(params->at(i), model.opt_type, instantiate_optimizer));
+            addLayer(std::make_unique<DenseLayer>(params->at(i), model.opt_type, mode));
         } else {
             const int input_features = (i == 0) ? num_features : model.net_struct[i - 1];
             addLayer(std::make_unique<DenseLayer>(input_features, model.net_struct[i], model.init_type, model.opt_type));
         }
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
+        if (i < model.net_struct.size() - 1 && model.dropout > Scalar(0) && mode == NetworkMode::TRAIN) {
+            addLayer(std::make_unique<DropoutLayer>(model.dropout));
+        }
     }
 
     // Add the final output layer with the specified number of classes and output activation
     if (params != nullptr) {
-        addLayer(std::make_unique<DenseLayer>(params->back(), model.opt_type, instantiate_optimizer));
+        addLayer(std::make_unique<DenseLayer>(params->back(), model.opt_type, mode));
     } else {
         addLayer(std::make_unique<DenseLayer>(model.net_struct.back(), num_classes, model.init_type, model.opt_type));
     }
@@ -138,7 +141,7 @@ void Network::setNormalizers(Normalizer input, Normalizer target) {
 Matrix Network::predict(const Matrix& input) const {
     Matrix out = features_norm.apply(input);
     for (const auto& layer : layers) {
-        out = layer->forward(out, false);
+        out = layer->forward(out, NetworkMode::TEST);
     }
     // Revert the normalization of the output to return predictions in the original scale
     return labels_norm.revert(out);
@@ -148,7 +151,7 @@ Matrix Network::predict(const Matrix& input) const {
 Matrix Network::forward(const Matrix& input) {
     Matrix out = features_norm.apply(input);
     for (auto& layer : layers) {
-        out = layer->forward(out, true);
+        out = layer->forward(out, NetworkMode::TRAIN);
     }
     // Revert the normalization of the output to return predictions in the original scale
     return labels_norm.revert(out);
@@ -192,8 +195,8 @@ RunCurves Network::train(const Dataset& dataset, const DataSplit& indices, const
     This avoids data leakage and ensures that the data is transformed in the same way
     For classification tasks, the labels are not normalized
     */
-    features_norm = Normalizer::fit(ctx.norm_type, train_features);
-    labels_norm = model.task == TaskType::REGRESSION ? Normalizer::fit(ctx.norm_type, train_labels) : Normalizer{};
+    features_norm = Normalizer::fit(model.norm_type, train_features);
+    labels_norm = model.task == TaskType::REGRESSION ? Normalizer::fit(model.norm_type, train_labels) : Normalizer{};
 
     // Calculate the number of batches
     const int current_batch_size = (model.batch_size == 0) ? input_size : model.batch_size;

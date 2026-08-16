@@ -25,7 +25,7 @@ class Layer {
 
   public:
     virtual ~Layer() = default;
-    virtual Matrix forward(const Matrix& input_matrix, bool training) = 0;
+    virtual Matrix forward(const Matrix& input_matrix, NetworkMode mode) = 0;
     virtual Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) = 0;
 
     // Snapshot and restore the layer's parameters in early stopping
@@ -61,9 +61,9 @@ class DenseLayer final : public Layer {
 
   public:
     DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type);
-    DenseLayer(Parameters params, OptimizerType opt_type, bool instantiate_optimizer);
+    DenseLayer(Parameters params, OptimizerType opt_type, NetworkMode mode);
 
-    Matrix forward(const Matrix& input_matrix, bool training) override;
+    Matrix forward(const Matrix& input_matrix, NetworkMode mode) override;
     Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) override;
 
     void takeSnapshot() override { snapshot = params; }
@@ -84,6 +84,18 @@ class ActivationLayer final : public Layer {
   public:
     explicit ActivationLayer(ActivationType activation_type, bool derivative_in_loss = false);
 
-    Matrix forward(const Matrix& input_matrix, bool training) override;
+    Matrix forward(const Matrix& input_matrix, NetworkMode mode) override;
+    Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) override;
+};
+
+class DropoutLayer final : public Layer {
+  private:
+    Scalar probability;
+    Matrix mask;
+
+  public:
+    explicit DropoutLayer(Scalar probability) : probability(probability) {}
+
+    Matrix forward(const Matrix& input_matrix, NetworkMode mode) override;
     Matrix backward(const Matrix& output_gradient, const Model& model, Scalar decay_fraction, bool is_first_layer) override;
 };

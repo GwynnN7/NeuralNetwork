@@ -75,8 +75,8 @@ DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, Opti
 }
 
 // DenseLayer constructor that initializes weights and biases with the provided matrices and vectors
-DenseLayer::DenseLayer(Parameters params, OptimizerType opt_type, bool instantiate_optimizer) : params(std::move(params)) {
-    if (instantiate_optimizer) {
+DenseLayer::DenseLayer(Parameters params, OptimizerType opt_type, NetworkMode mode) : params(std::move(params)) {
+    if (mode == NetworkMode::TRAIN) {
         setOptimizer(opt_type);
     }
 }
@@ -100,11 +100,11 @@ Backward:
 */
 
 // Forward pass through the DenseLayer, saving the input for backpropagation
-Matrix DenseLayer::forward(const Matrix& input_matrix, bool training) {
+Matrix DenseLayer::forward(const Matrix& input_matrix, NetworkMode mode) {
     if (params.W.cols() != input_matrix.rows()) {
         throw std::runtime_error("Dimension mismatch in DenseLayer forward pass");
     }
-    if (training) {
+    if (mode == NetworkMode::TRAIN) {
         X = input_matrix; // Store the input for backpropagation
     }
     // Return the output of the layer by multiplying the weights with the input and adding the bias
@@ -145,8 +145,8 @@ ActivationLayer::ActivationLayer(ActivationType activation_type, bool derivative
 }
 
 // Forward pass through the ActivationLayer, applying the activation function to the input matrix
-Matrix ActivationLayer::forward(const Matrix& input_matrix, bool training) {
-    if (training && activation.derivative) {
+Matrix ActivationLayer::forward(const Matrix& input_matrix, NetworkMode mode) {
+    if (mode == NetworkMode::TRAIN && activation.derivative) {
         X = input_matrix; // Only stored when backward pass will actually use it to calculate the derivative
     }
     // o_t = f_t(net_t)
@@ -161,4 +161,36 @@ Matrix ActivationLayer::backward(const Matrix& output_gradient, const Model&, Sc
     // dE/dnet_t = dE/do_t * f'(net_t)
     Matrix derivative = activation.derivative(X);    // Calculate the derivative of the activation function with respect to the input
     return output_gradient.cwiseProduct(derivative); // Element-wise multiplication of gradient and derivative
+}
+
+// Forward pass through the DropoutLayer, generating a mask and applying the dropout
+Matrix DropoutLayer::forward(const Matrix& input_matrix, NetworkMode mode) {
+    // If not training or drop probability is 0, don't apply dropout
+    if (mode == NetworkMode::TEST || probability == Scalar(0)) {
+        return input_matrix;
+    }
+
+    Scalar p = Scalar(1) - probability;
+    mask = Matrix(input_matrix.rows(), input_matrix.cols());
+    std::uniform_real_distribution<Scalar> dist(Scalar(0), Scalar(1));
+    auto& gen = get_trial_generator();
+
+    // Generate tthe mask
+    for (Eigen::Index i = 0; i < mask.size(); ++i) {
+        // Scale the kept neurons by 1/p to maintain the expected value of the outputs
+        mask(i) = (dist(gen) < p) ? (Scalar(1) / p) : Scalar(0);
+    }
+
+    // o_t = mask(net_t)
+    return input_matrix.cwiseProduct(mask);
+}
+
+// Backward pass through the DropoutLayer, applying the mask to the output gradient
+Matrix DropoutLayer::backward(const Matrix& output_gradient, const Model&, Scalar, bool) {
+    if (probability == Scalar(0)) {
+        return output_gradient;
+    }
+
+    // dE/do_u = mask(dE/dnet_t)
+    return output_gradient.cwiseProduct(mask);
 }

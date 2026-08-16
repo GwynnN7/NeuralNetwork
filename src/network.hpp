@@ -21,9 +21,8 @@ struct TrainContext {
     int patience = 0; // Updates without improvement before early stopping
     int warmup = 0;   // Updates spent increasing the learning rate
 
-    NormalizationType norm_type = NormalizationType::NONE; // Normalization method
-    StoppingRule stopping = StoppingRule::PATIENCE;        // Early stopping rule requested for this run
-    std::optional<Scalar> target_error = std::nullopt;     // Training error level to stop at, only set when the ERROR rule has one to aim for
+    StoppingRule stopping = StoppingRule::PATIENCE;    // Early stopping rule requested for this run
+    std::optional<Scalar> target_error = std::nullopt; // Training error level to stop at, only set when the ERROR rule has one to aim for
 
     int model_id = 0;    // Grid-search id of the model being trained
     int outer_index = 0; // Outer cross-validation fold
@@ -37,7 +36,6 @@ struct TrainContext {
             .updates = args.updates,
             .patience = args.patience,
             .warmup = args.warmup,
-            .norm_type = args.normalization_type,
             .stopping = args.stopping_rule};
     }
 };
@@ -53,7 +51,7 @@ class Network {
 
     void setLossFunction(LossType lossType);
     void addLayer(std::unique_ptr<Layer> layer);
-    void buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, bool instantiate_optimizer);
+    void buildLayers(const Model& model, int num_features, int num_classes, const std::vector<Parameters>* params, NetworkMode mode);
     static void validateModel(const Model& model, int num_features, int num_classes);
 
     void snapshotParameters();
@@ -65,7 +63,7 @@ class Network {
   public:
     explicit Network(const Model& model);
     Network(const Model& model, int num_features, int num_classes);
-    Network(const Model& model, const std::vector<Parameters>& params, bool instantiate_optimizer = false);
+    Network(const Model& model, const std::vector<Parameters>& params);
     ~Network() = default;
 
     Model model;
