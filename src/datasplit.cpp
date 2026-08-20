@@ -62,7 +62,7 @@ std::vector<DataSplit> Splitter::kfold(std::vector<int> indices, int k) const {
     }
 
     std::vector<DataSplit> folds(k);
-    // Calculate the size of each fold and distribute the remaining samples on the first few folds
+    // Calculate the size of each fold and distribute the remaining samples on the first folds
     const int fold_size = num_samples / k;
     const int remaining_samples = num_samples % k;
 
@@ -131,11 +131,14 @@ std::vector<DataSplit> Splitter::get(int folds, const std::vector<int>* indices)
 
     // Determine the type of split based on the number of folds and the dataset's task type
     if (folds == 1) {
+        // Single holdout split if K=1
         splits = {holdout_split(samples, indices == nullptr)};
     } else if (dataset.task == TaskType::CLASSIFICATION) {
+        // Use the provided indices to get the labels for splitting if available, otherwise use the entire dataset's labels
         splits = (indices != nullptr) ? stratified_split(folds, dataset.labels(Eigen::placeholders::all, *indices))
                                       : stratified_split(folds, dataset.labels);
     } else {
+        // For regression use a standard k-fold split
         splits = standard_split(folds, samples);
     }
 

@@ -4,7 +4,7 @@
 
 #include <vector>
 
-// A partition of sample indices into a part to train on and a part held out from training
+// Represents a single split of the dataset into training and testing sets
 struct DataSplit {
     std::vector<int> train_indices;
     std::vector<int> test_indices;
@@ -15,7 +15,7 @@ struct DataSplit {
     }
 };
 
-// Forward declaration
+// Forward declarations
 struct Args;
 struct Dataset;
 

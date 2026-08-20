@@ -90,7 +90,9 @@ class ActivationLayer final : public Layer {
 
 class DropoutLayer final : public Layer {
   private:
+    // The probability of dropping a unit during training
     Scalar probability;
+    // The mask used to drop units
     Matrix mask;
 
   public:

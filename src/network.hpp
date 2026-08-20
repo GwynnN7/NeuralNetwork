@@ -21,14 +21,14 @@ struct TrainContext {
     int patience = 0; // Updates without improvement before early stopping
     int warmup = 0;   // Updates spent increasing the learning rate
 
-    StoppingRule stopping = StoppingRule::PATIENCE;    // Early stopping rule requested for this run
+    StoppingRule stopping = StoppingRule::PATIENCE;    // Early stopping rule for this run
     std::optional<Scalar> target_error = std::nullopt; // Training error level to stop at, only set when the ERROR rule has one to aim for
 
     int model_id = 0;    // Grid-search id of the model being trained
     int outer_index = 0; // Outer cross-validation fold
     int inner_index = 0; // Inner cross-validation fold
 
-    bool in_model_selection = false; // Selecting on a validation fold rather than final training
+    bool in_model_selection = false; // Whether this run is part of model selection (inner folds) or not (outer folds, final retrain)
     bool logging = true;             // Write the per-epoch metrics CSV
 
     static TrainContext from_args(const Args& args) {

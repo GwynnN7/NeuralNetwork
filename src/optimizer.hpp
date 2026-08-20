@@ -6,7 +6,7 @@
 #include <cmath>
 
 /*
-`alpha` hyperparameter covers any momentum or first moment, `beta` hyperparameter covers second moment
+`alpha` hyperparameter covers SGD's momentum, RMSProp's "second moment" or Adam's first moment, `beta` hyperparameter covers Adam's second moment
 
 SGD with Momentum (α = alpha):
   Update rule with momentum to smooth oscillations in gradient direction by following the previous gradient direction
@@ -120,7 +120,7 @@ class Adam : public Optimizer {
         t = 0;
     }
 
-    // Calculate the weight and bias updates using Adam algorithm (combination of momentum and RMSProp)
+    // Calculate the weight and bias updates using Adam algorithm
     void update(Parameters& params, const Parameters& gradient, const Model& model, Scalar decay_fraction) override {
         const Scalar B1 = model.alpha;
         const Scalar B2 = model.beta;

@@ -6,7 +6,6 @@
 
 #include <vector>
 
-// Measures computed from a set of targets and predictions
 namespace Measure {
 // Accuracy for binary and multi-class tasks
 OUT inline Scalar accuracy(const Matrix& target, const Matrix& prediction) {

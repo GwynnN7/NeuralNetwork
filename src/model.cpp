@@ -30,7 +30,7 @@ std::vector<Model> Model::load_grid_search(const std::string& filename) {
         const std::vector<std::string>& row = csv_row.cells;
         const int row_number = csv_row.line;
 
-        // Validate that the row has the expected number of columns. The 12th (beta) column is optional
+        // Validate that the row has the expected number of columns. The `HYPERPARAMS_NUM_OPT` column (beta) is optional
         if (row.size() != HYPERPARAMS_NUM && row.size() != HYPERPARAMS_NUM_OPT) {
             throw std::runtime_error("Grid row " + std::to_string(row_number) + ": invalid number of columns");
         }
@@ -291,7 +291,7 @@ std::expected<std::unique_ptr<Network>, std::string> load_model(const std::files
             return std::unexpected("trained for a different task type than the dataset");
         }
 
-        // Read the normalizers for features and labels data if used
+        // Read the normalizers for features and labels data if used, in order
         const auto read_normalizer = [&dump_file] {
             Normalizer normalizer;
             const std::int32_t size = read_dimension(dump_file, "normalizer size", true);

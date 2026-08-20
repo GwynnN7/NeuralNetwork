@@ -47,6 +47,7 @@ void Network::buildLayers(const Model& model, int num_features, int num_classes,
             addLayer(std::make_unique<DenseLayer>(input_features, model.net_struct[i], model.init_type, model.opt_type));
         }
         addLayer(std::make_unique<ActivationLayer>(model.hidden_activation));
+        // Add a DropoutLayer if dropout is specified, mode is training, and not in the last layer
         if (i < model.net_struct.size() - 1 && model.dropout > Scalar(0) && mode == NetworkMode::TRAIN) {
             addLayer(std::make_unique<DropoutLayer>(model.dropout));
         }

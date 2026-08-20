@@ -44,8 +44,8 @@ inline Matrix tanh_activation(const Matrix& net) {
 
 // f'(net) = 1 - f(net)^2
 inline Matrix tanh_derivative(const Matrix& net) {
-    Matrix t = tanh_activation(net);
-    return Scalar(1) - (t.array() * t.array());
+    Matrix tanh = tanh_activation(net);
+    return Scalar(1) - (tanh.array() * tanh.array());
 }
 
 // f(net) = net

@@ -14,7 +14,7 @@ Scores used for model selection
 For classification the main metric is the error rate (1 - accuracy), and the tie-breaking metric is the MSE
 For regression the main metric is the MEE, and the tie-breaking metric is the MSE
 
-The total score of a run is the minimum "custom" Upper Confidence Bound across all windows of epochs
+The total score of a run is the minimum "custom" Upper Confidence Bound (called UCB from now on) across all windows of epochs
 The UCB of a window is the average of the metric summed with half the standard deviation of the metric
 This method avoids selecting models that have a noisy validation curve with a possible low point, thus preferring more stable and smooth models
 */
@@ -107,6 +107,7 @@ struct SelectionScore {
 
             combined_mean /= static_cast<Scalar>(total_samples);
 
+            // Can't just average the stds, need to compute the combined std
             // Law of total variance: SST = SSW + SSB
             Scalar total_ss = 0.0;
             for (const auto& s : stats) {

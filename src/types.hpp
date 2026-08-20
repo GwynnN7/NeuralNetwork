@@ -16,7 +16,9 @@
 #endif
 
 // Define a macro for marking [[nodiscard]] and [[fallthrough]]
+// [[nodiscard]] is used to indicate that the return value of a function should not be ignored
 #define OUT [[nodiscard]]
+// fallthrough is used in switch statements to indicate intentional fallthrough to the next case
 #define FALLTHROUGH [[fallthrough]]
 
 // Define types for Scalar and commonly used Matrix and Vector.

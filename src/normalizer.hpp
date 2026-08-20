@@ -7,24 +7,22 @@
 #include <utility>
 
 /*
+Normalization is fitted on the training set and applied to both training and test sets
+
 MIN_MAX:
   Scale each feature to [0, 1] by subtracting the minimum and dividing by the range (max - min)
   x' = (x - min) / (max - min)
   Sensitive to outliers but good for data that is already bounded
-  Avoids neuron saturation, but only for the positive half of the activation range [0, 1]
 
 ABS_MAX:
   Scale each feature to [-1, 1] by dividing by the absolute maximum value
   x' = x / max(|x|)
   Good for sparse data (with many zero values) because it doesn't subtract the mean, keeping the zeros
   By preserving sparsity, it saves memory and increases efficiency for sparse datasets
-  Avoids neuron saturation by bounding to [-1, 1], but doesn't center the distribution
 
 Z_SCORE:
   Standardize each feature to have zero mean and unit variance by subtracting the mean and dividing by the standard deviation
   x' = (x - mean) / std
-  Balances the distribution and centers data at zero, making gradient descent more stable
-  Avoids neuron saturation by keeping most of the data (3σ) in the active linear region of most activation functions
   Less sensitive to outliers than min-max scaling, but still affected by extreme values
 
 NONE:

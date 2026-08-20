@@ -18,18 +18,12 @@ RANDOM:
 
 LECUN:
   Uniform distribution in [-sqrt(3 / fan_in), sqrt(3 / fan_in)]
-  Keeps the variance of the layer outputs equal to the inputs by scaling the weights by 1/fan_in
-  Stabilizes the variance of the signals during forward pass
 
 GLOROT:
   Uniform distribution in [-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))]
-  Recommended for Sigmoid or Tanh activation functions
-  Stabilizes the variance of the signals during both the forward pass and the backward pass
 
 HE:
   Normal distribution with mean 0 and standard deviation sqrt(2 / fan_in)
-  Recommended for ReLU activation functions
-  Since ReLU sets to zero half of the inputs (negative values), He initialization compensates for this loss by multiplying the baseline variance by 2
 */
 DenseLayer::DenseLayer(int input_size, int output_size, InitType init_type, OptimizerType opt_type) {
     // Determine the distribution value based on the initialization type.
@@ -139,7 +133,7 @@ ActivationLayer::ActivationLayer(ActivationType activation_type, bool derivative
         throw std::invalid_argument("Unsupported activation function type");
     }
     activation.function = functions->function;
-    // Left null when the derivative would do nothing or is already folded into the loss
+    // Left null when the derivative would do nothing or is already integrated into the loss
     const bool skip_derivative = derivative_in_loss || ActivationFunctions::has_identity_derivative(activation_type);
     activation.derivative = skip_derivative ? nullptr : functions->derivative;
 }
@@ -175,7 +169,7 @@ Matrix DropoutLayer::forward(const Matrix& input_matrix, NetworkMode mode) {
     std::uniform_real_distribution<Scalar> dist(Scalar(0), Scalar(1));
     auto& gen = get_trial_generator();
 
-    // Generate tthe mask
+    // Generate the mask
     for (Eigen::Index i = 0; i < mask.size(); ++i) {
         // Scale the kept neurons by 1/p to maintain the expected value of the outputs
         mask(i) = (dist(gen) < p) ? (Scalar(1) / p) : Scalar(0);
