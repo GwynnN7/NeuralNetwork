@@ -1,0 +1,13 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+
+0,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+
+1,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.001,0.001,0,0.9,0.999
+2,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.003,0.002,0,0.9,0.999
+
+3,160-160-160-160,relu,linear,lecun,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999
+
+4,256-256-256-256-256,relu,linear,lecun,adam,mse,minmax,0,0.003,0.002,0,0.9,0.999
+5,256-256-256-256-256,relu,linear,lecun,adam,mse,minmax,0,0.01,0.003,0,0.9,0.999
+6,384-384-384-384-384,relu,linear,lecun,adam,mse,minmax,0,0.003,0.002,0,0.9,0.999
+7,384-384-384-384-384,relu,linear,lecun,adam,mse,minmax,0,0.01,0.003,0,0.9,0.999

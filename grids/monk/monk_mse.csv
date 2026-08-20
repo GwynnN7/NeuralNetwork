@@ -1,0 +1,25 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+
+# --- A. units x eta ---------------------------------------------------------
+0,2,tanh,sigmoid,glorot,sgd,mse,none,0,0.25,1e-2,0,0.85
+1,2,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-2,0,0.85
+2,2,tanh,sigmoid,glorot,sgd,mse,none,0,1.0,1e-2,0,0.85
+3,2,tanh,sigmoid,glorot,sgd,mse,none,0,2.0,1e-2,0,0.85
+4,3,tanh,sigmoid,glorot,sgd,mse,none,0,0.25,1e-2,0,0.85
+5,3,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-2,0,0.85
+6,3,tanh,sigmoid,glorot,sgd,mse,none,0,1.0,1e-2,0,0.85
+7,3,tanh,sigmoid,glorot,sgd,mse,none,0,2.0,1e-2,0,0.85
+8,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.25,1e-2,0,0.85
+9,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-2,0,0.85
+10,4,tanh,sigmoid,glorot,sgd,mse,none,0,1.0,1e-2,0,0.85
+11,4,tanh,sigmoid,glorot,sgd,mse,none,0,2.0,1e-2,0,0.85
+
+# --- B. weight decay, including the unregularized baseline ------------------
+12,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,0,0,0.85
+13,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-3,0,0.85
+14,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,3e-2,0,0.85
+
+# --- C. momentum at a matched effective step --------------------------------
+15,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.25,1e-2,0,0.95
+16,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-2,0,0.9
+17,4,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,1e-2,0,0.0

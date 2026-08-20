@@ -28,7 +28,7 @@ TRAIN = ("purple", "-", "o")
 VALID = ("orange", "--", "s")
 TEST = ("blue", "-.", "^")
 BAND_ALPHA = 0.18
-MARKERS_PER_LINE = 12  # Markers are spaced out so they identify the line without hiding it
+MARKERS_PER_LINE = 12 
 
 
 def load(path):

@@ -1,0 +1,17 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+0,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.0009,0.002,0,0.9,0.999
+1,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+2,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.0011,0.002,0,0.9,0.999
+3,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.0015,0,0.9,0.999
+4,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.0025,0,0.9,0.999
+5,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.0010,2.0e-3,0,0.9,0.999
+6,128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.0008,0.001,0,0.9,0.999
+7,128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999
+8,128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.001,0.001,0,0.9,0.999
+9,128-128-128-128,relu,linear,he,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999
+10,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999
+11,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.001,0.001,0,0.9,0.999
+12,128-128-128-128-128,relu,linear,he,adam,mse,minmax,0,0.001,0.001,0,0.9,0.999
+13,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,64,0.0009,0.01,0,0.9,0.999
+14,160-160-160-160,relu,linear,lecun,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999
+15,160-160-160-160,relu,linear,he,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999

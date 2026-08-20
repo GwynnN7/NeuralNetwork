@@ -68,7 +68,7 @@ struct SelectionScore {
         // Compute the score for each window of epochs and keep track of the best score
         for (size_t i = 0; i + window_size <= epochs.size(); ++i) {
             std::vector<std::pair<Scalar, Scalar>> window_stats;
-            for (size_t j = i + 1; j < i + window_size; ++j) {
+            for (size_t j = i; j < i + window_size; ++j) {
                 window_stats.push_back(epoch_score(epochs[j]));
             }
             // Compute the mean and std of the main and tie metrics for the current window

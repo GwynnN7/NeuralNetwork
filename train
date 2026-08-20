@@ -5,7 +5,7 @@ LOGS_DIR="logs"
 
 mkdir -p $RELEASE_DIR
 mkdir -p $LOGS_DIR
-cmake -B $RELEASE_DIR -DCMAKE_BUILD_TYPE=Release #-DNN_DOUBLE_PRECISION=ON -NN_USE_BLAS=OFF
+cmake -B $RELEASE_DIR -DCMAKE_BUILD_TYPE=Release #-DNN_DOUBLE_PRECISION=ON -DNN_USE_BLAS=OFF
 cmake --build $RELEASE_DIR -j 6 || { echo -e "\n[Error] Build failed"; exit 1; }
 
 if [ ! -n "$1" ]; then
@@ -32,9 +32,9 @@ SEED=42 # Random seed for reproducibility
 # Per-dataset overrides
 case "$1" in
 mlcup)
-    TRIALS=3
+    TRIALS=5
     INNER_K=5
-    OUTER_K=5
+    OUTER_K=1
     UPDATES=25000
     WINDOW=200
     PATIENCE=1500

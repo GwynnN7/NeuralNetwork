@@ -1,0 +1,5 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+129,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0.05,0.9,0.999
+130,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0.1,0.9,0.999
+131,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.001,0.001,0.05,0.9,0.999
+132,128-128-128-128-128,relu,linear,lecun,adam,mse,minmax,0,0.001,0.001,0.1,0.9,0.999

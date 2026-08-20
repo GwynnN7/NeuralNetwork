@@ -14,6 +14,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <print>
@@ -245,20 +247,25 @@ void train(const Dataset& dataset, const Args& args) {
     }
 }
 
+constexpr const char* SUBMISSION_AUTHOR = "Gwynn7";
+constexpr const char* SUBMISSION_TEAM = "gwynn7";
+
 void write_blind_predictions(const Matrix& predictions, const DatasetType dataset_type) {
     const std::filesystem::path file = std::format("{}/{}.csv", MODEL_PATH, Lookup::name_of(Lookup::datasets, dataset_type));
     std::ofstream out(file);
     if (!out.is_open()) {
         throw std::runtime_error("Could not open " + file.string() + " for writing");
     }
-    // Write the header and metadata to the CSV file
+
     const auto now = std::chrono::floor<std::chrono::days>(std::chrono::system_clock::now());
-    out << "# \n";
-    out << "# " << Lookup::name_of(Lookup::datasets, dataset_type) << "\n";
-    out << "# " << std::format("{:%d %b %Y}", now) << "\n";
+    out << "# " << SUBMISSION_AUTHOR << "\n";
+    out << "# " << SUBMISSION_TEAM << "\n";
+    out << "# " << (dataset_type == DatasetType::MLCUP ? "ML-CUP25" : Lookup::name_of(Lookup::datasets, dataset_type))
+        << "\n";
+    out << "# " << std::format("{:%d/%m/%Y}", now) << "\n";
+    out << std::setprecision(std::numeric_limits<Scalar>::max_digits10);
     for (Eigen::Index p = 0; p < predictions.cols(); ++p) {
         out << (p + 1);
-        // Write the id and predictions for each sample
         for (Eigen::Index m = 0; m < predictions.rows(); ++m) {
             out << "," << predictions(m, p);
         }

@@ -1,0 +1,2 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+0,160-160-160-160,relu,linear,he,adam,mse,minmax,0,0.0009,0.001,0,0.9,0.999

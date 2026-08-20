@@ -1,0 +1,11 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+0,96-48-24,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+1,96-48-32,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+2,96-64-32,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+3,96-64-48,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+4,112-56-28,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+5,128-64-32,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+6,128-96-64,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+7,96-48-24-12,tanh,linear,glorot,adam,mse,zscore,0,0.001,0.002,0,0.9,0.999
+8,96-64-32,tanh,linear,glorot,adam,mse,zscore,0,0.0015,0.002,0,0.9,0.999
+9,96-64-32,tanh,linear,glorot,adam,mse,zscore,0,0.002,0.0025,0,0.9,0.999

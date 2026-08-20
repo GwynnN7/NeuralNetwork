@@ -71,11 +71,12 @@ testing/
 .cache/
 
 # custom
-artifacts/
-logs/
+artifacts*
+logs*
 docs/
-plots/
-grids/*_test.csv
+plots*
+*_test.csv
+.old/
 
 # VSCode
 .vscode/

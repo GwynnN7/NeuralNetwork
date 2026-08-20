@@ -1,0 +1,2 @@
+id,net,hidden,output,init,opt,loss,norm,batch,eta,lambda,dropout,alpha,beta
+0,3,tanh,sigmoid,glorot,sgd,mse,none,0,0.5,0,0,0.85
