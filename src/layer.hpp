@@ -17,6 +17,9 @@ DenseLayer:
 
 ActivationLayer:
   Follows each DenseLayer and applies a non-linear activation function to the input
+
+DropoutLayer:
+  Follows each ActivationLayer (except the last one) and applies dropout regularization to the input
 */
 
 class Layer {

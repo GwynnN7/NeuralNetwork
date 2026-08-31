@@ -1,0 +1,5 @@
+Final model: Neural Network, 3 hidden layers of 96-64-32 units, with Tanh Hidden Activation Function, Z-Score Normalization,
+Glorot Weights Initialization, Full-Batch, Adam Optimizer (eta 0.002, lambda 0.0025, beta1 0.9, beta2 0.999),
+Max 25000 updates, Patience Early Stopping (1500 updates), Learning Rate Warmup (50 updates) and Linear Decay (1% of eta after 80% epochs).
+Validation: Nested CV, 5 outer folds for assessment and 5 inner x 15 trials for selection (Selection Window: 200 epochs).
+Internal Test MEE 16.77 +/- 0.69

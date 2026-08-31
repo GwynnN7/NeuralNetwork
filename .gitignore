@@ -71,12 +71,11 @@ testing/
 .cache/
 
 # custom
-artifacts*
-logs*
-docs/
-plots*
-*_test.csv
-.old/
+*artifact*
+*.log*
+*plot*
+*test*
+*.old
 
 # VSCode
 .vscode/
